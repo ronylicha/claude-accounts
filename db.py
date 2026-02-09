@@ -237,10 +237,10 @@ CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
 def capture_oauth_tokens(account_id: str, credentials_path: str = None) -> dict:
     """
     Read OAuth tokens from Claude's .credentials.json and store them encrypted.
-    Called after user does `claude auth login`.
+    Called after user has authenticated by running `claude`.
 
     Flow:
-      1. User runs `claude auth login` (normal login, shared .claude)
+      1. User runs `claude` (auth happens automatically on first launch)
       2. This function reads the resulting tokens from .credentials.json
       3. Stores them encrypted in our SQLite
       4. Now `claude-accounts launch <name>` injects the token via env var
@@ -252,7 +252,7 @@ def capture_oauth_tokens(account_id: str, credentials_path: str = None) -> dict:
     if not path.exists():
         raise FileNotFoundError(
             f"Credentials file not found: {path}\n"
-            f"Run 'claude auth login' first, then capture the tokens."
+            f"Run 'claude' first to authenticate, then capture the tokens."
         )
 
     with open(path) as f:

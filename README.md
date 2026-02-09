@@ -110,21 +110,21 @@ That's it. Same `~/.claude`, same config, different credentials.
 
 ### OAuth Accounts
 
-For Claude Pro/Team accounts that use OAuth instead of API keys:
+For Claude Pro/Team/Max accounts that use OAuth instead of API keys:
 
 ```bash
-# Step 1: Create the account
-python cli.py add client --oauth
+# Step 1: Authenticate with Claude (if not already done)
+claude
+# Auth happens automatically on first launch — complete it, then exit
 
-# Step 2: Login (opens browser, captures tokens)
-python cli.py login client
-# Runs claude auth login
-# You authenticate in the browser
-# Tokens are captured from ~/.claude/.credentials.json
-# Stored encrypted in SQLite
+# Step 2: Capture the tokens into an account
+claude-accounts login client
+# Reads tokens from ~/.claude/.credentials.json
+# Stores them encrypted in SQLite
+# Account is auto-created if it doesn't exist
 
 # Step 3: Use it
-python cli.py launch client
+claude-accounts launch client
 # Injects CLAUDE_CODE_OAUTH_TOKEN and runs claude
 ```
 
@@ -188,13 +188,13 @@ The dashboard provides:
 
 ### OAuth Token Capture
 
-When you run `python cli.py login <name>`:
+When you run `claude-accounts login <name>`:
 
-1. The CLI runs `claude auth login`, which opens your browser
-2. You authenticate with the Claude account you want
-3. Claude writes tokens to `~/.claude/.credentials.json`
-4. The CLI reads that file, encrypts the tokens, and stores them in SQLite
-5. On next `launch`, the access token is decrypted and injected as `CLAUDE_CODE_OAUTH_TOKEN`
+1. The CLI reads tokens from `~/.claude/.credentials.json` (created when you first run `claude`)
+2. Encrypts the tokens and stores them in SQLite
+3. On next `launch`, the access token is decrypted and injected as `CLAUDE_CODE_OAUTH_TOKEN`
+
+> **Note:** You must run `claude` at least once to authenticate before capturing tokens. Auth happens automatically on first launch.
 
 ## Security
 

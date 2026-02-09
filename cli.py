@@ -64,9 +64,8 @@ def cmd_add(args):
 def cmd_login(args):
     """
     OAuth login flow:
-    1. Run `claude auth login` (shared .claude dir)
-    2. User completes OAuth in browser
-    3. Capture tokens from .credentials.json → SQLite
+    1. User authenticates by running `claude` (auth happens automatically on first launch)
+    2. This command captures tokens from ~/.claude/.credentials.json → SQLite
     """
     name = args.name.lower().strip()
     acc = db.get_account_by_name(name)
@@ -82,20 +81,17 @@ def cmd_login(args):
         print(f"✗ '{name}' est un compte API key, pas OAuth")
         sys.exit(1)
 
-    print(f"\n  🔐 Login OAuth pour '{name}'")
-    print(f"  → Va ouvrir le navigateur pour l'authentification")
-    print(f"  → Connecte-toi avec le compte Claude que tu veux associer à '{name}'")
-    print()
-
-    # Run claude auth login (uses shared .claude dir)
-    result = subprocess.run(["claude", "auth", "login"], cwd=str(Path.home()))
-
-    if result.returncode != 0:
-        print(f"\n✗ Login échoué (code {result.returncode})")
+    # Check if credentials file exists
+    cred_path = Path.home() / ".claude" / ".credentials.json"
+    if not cred_path.exists():
+        print(f"\n✗ Fichier {cred_path} introuvable.")
+        print(f"  Lance d'abord : claude")
+        print(f"  L'authentification se fait automatiquement au premier lancement.")
+        print(f"  Ensuite relance : claude-accounts login {name}")
         sys.exit(1)
 
-    # Capture tokens
-    print(f"\n  ⏳ Capture des tokens...")
+    # Capture tokens from existing credentials
+    print(f"\n  ⏳ Capture des tokens pour '{name}'...")
     try:
         info = db.capture_oauth_tokens(acc["id"])
         print(f"  ✓ Token capturé : {info['token_preview']}")
