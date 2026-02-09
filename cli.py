@@ -201,14 +201,30 @@ def cmd_remove(args):
         print("  Annulé")
 
 
+def _cli_paths():
+    """Return (python_path, cli_path) using venv if available."""
+    project_dir = Path(__file__).resolve().parent
+    venv_python = project_dir / "venv" / "bin" / "python"
+    cli_path = project_dir / "cli.py"
+    py = str(venv_python) if venv_python.exists() else "python3"
+    return py, str(cli_path)
+
+
 def cmd_aliases(args):
     accounts = db.list_accounts()
     if not accounts:
         print("# Aucun compte")
         return
 
+    py, cli_path = _cli_paths()
+
     print("#!/usr/bin/env bash")
     print("# Claude Accounts — one shared .claude, injected env vars")
+    print()
+    print("# CLI wrapper (auto-activates venv)")
+    print("claude-accounts() {")
+    print(f'    "{py}" "{cli_path}" "$@"')
+    print("}")
     print()
 
     for acc in accounts:
@@ -227,7 +243,18 @@ def cmd_install(args):
     aliases_dir.mkdir(parents=True, exist_ok=True)
     aliases_file = aliases_dir / "aliases.sh"
 
-    lines = ["#!/usr/bin/env bash", "# Claude Accounts Manager", ""]
+    py, cli_path = _cli_paths()
+
+    lines = [
+        "#!/usr/bin/env bash",
+        "# Claude Accounts Manager",
+        "",
+        "# CLI wrapper (auto-activates venv)",
+        "claude-accounts() {",
+        f'    "{py}" "{cli_path}" "$@"',
+        "}",
+        "",
+    ]
     for acc in accounts:
         try:
             env_vars = db.get_launch_env(acc["id"])

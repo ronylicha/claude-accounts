@@ -114,13 +114,28 @@ def api_launch(aid):
     })
 
 
+def _cli_paths():
+    """Return (python_path, cli_path) using venv if available."""
+    project_dir = Path(__file__).resolve().parent
+    venv_python = project_dir / "venv" / "bin" / "python"
+    cli_path = project_dir / "cli.py"
+    py = str(venv_python) if venv_python.exists() else "python3"
+    return py, str(cli_path)
+
+
 @app.route("/api/generate-aliases", methods=["GET"])
 def api_aliases():
     accounts = db.list_accounts()
+    py, cli_path = _cli_paths()
     lines = [
         "#!/usr/bin/env bash",
         "# Claude Accounts Manager — auto-generated aliases",
         "# All accounts share one .claude dir, credentials injected via env vars",
+        "",
+        "# CLI wrapper (auto-activates venv)",
+        "claude-accounts() {",
+        f'    "{py}" "{cli_path}" "$@"',
+        "}",
         "",
     ]
     for acc in accounts:
@@ -145,7 +160,17 @@ def api_install():
     aliases_dir.mkdir(parents=True, exist_ok=True)
     aliases_file = aliases_dir / "aliases.sh"
 
-    lines = ["#!/usr/bin/env bash", "# Claude Accounts Manager", ""]
+    py, cli_path = _cli_paths()
+    lines = [
+        "#!/usr/bin/env bash",
+        "# Claude Accounts Manager",
+        "",
+        "# CLI wrapper (auto-activates venv)",
+        "claude-accounts() {",
+        f'    "{py}" "{cli_path}" "$@"',
+        "}",
+        "",
+    ]
     for acc in accounts:
         try:
             env_vars = db.get_launch_env(acc["id"])

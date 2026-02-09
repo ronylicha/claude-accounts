@@ -55,10 +55,16 @@ Before:                              After:
 ## Installation
 
 ```bash
-pip install flask cryptography
+git clone https://github.com/ronyk/claude-accounts.git
+cd claude-accounts
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 Requirements: Python 3.10+, `flask`, `cryptography`.
+
+> **Note:** The virtual environment must be activated (`source venv/bin/activate`) each time you open a new terminal before running any `python` command.
 
 ## Quick Start
 
@@ -127,13 +133,16 @@ python cli.py launch client
 Generate aliases so you can type `claude-perso` instead of `python cli.py launch perso`:
 
 ```bash
-# Install aliases into your shell
+# Install aliases into your shell (run once, from the venv)
 python cli.py install
+source ~/.claude-accounts/aliases.sh
 
-# Now use directly:
-claude-perso       # launches with personal API key
-claude-boulot      # launches with work OAuth token
-claude-client      # launches with client credentials
+# Now use directly — no venv activation needed:
+claude-accounts list       # CLI wrapper auto-uses the venv
+claude-accounts add work --key sk-ant-...
+claude-perso               # launches with personal API key
+claude-boulot              # launches with work OAuth token
+claude-client              # launches with client credentials
 ```
 
 ## Web Dashboard
@@ -237,6 +246,8 @@ To set up for development:
 ```bash
 git clone <repo-url>
 cd claude-accounts
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 python server.py
 ```
