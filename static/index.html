@@ -1,776 +1,2113 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Accounts Manager</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.4/dist/socket.io.min.js"></script>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Accounts Manager</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.4/dist/socket.io.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 
-  :root {
-    --bg: #08090d;
-    --bg1: #0f1117;
-    --bg2: #151720;
-    --bg3: #060710;
-    --brd: #1c1e30;
-    --brd2: #2a2d45;
-    --brd-focus: #c97b5a;
+    :root {
+      --bg: #08090d;
+      --bg1: #0f1117;
+      --bg2: #151720;
+      --bg3: #060710;
+      --brd: #1c1e30;
+      --brd2: #2a2d45;
+      --brd-focus: #c97b5a;
 
-    --acc: #c97b5a;
-    --acc-h: #d98f6e;
-    --acc-s: rgba(201,123,90,0.10);
+      --acc: #c97b5a;
+      --acc-h: #d98f6e;
+      --acc-s: rgba(201, 123, 90, 0.10);
 
-    --grn: #22c55e;
-    --grn-s: rgba(34,197,94,0.10);
-    --grn-b: rgba(34,197,94,0.20);
-    --red: #ef4444;
-    --red-s: rgba(239,68,68,0.10);
-    --ylw: #eab308;
-    --ylw-s: rgba(234,179,8,0.10);
-    --blu: #3b82f6;
-    --blu-s: rgba(59,130,246,0.10);
+      --grn: #22c55e;
+      --grn-s: rgba(34, 197, 94, 0.10);
+      --grn-b: rgba(34, 197, 94, 0.20);
+      --red: #ef4444;
+      --red-s: rgba(239, 68, 68, 0.10);
+      --ylw: #eab308;
+      --ylw-s: rgba(234, 179, 8, 0.10);
+      --blu: #3b82f6;
+      --blu-s: rgba(59, 130, 246, 0.10);
 
-    --t: #b0b3c4;
-    --td: #5c5e72;
-    --tb: #e8eaf0;
-    --th: #f1f3f9;
+      --t: #b0b3c4;
+      --td: #5c5e72;
+      --tb: #e8eaf0;
+      --th: #f1f3f9;
 
-    --ui: 'Inter', system-ui, -apple-system, sans-serif;
-    --mono: 'JetBrains Mono', 'Fira Code', monospace;
-    --r: 10px;
-    --r-sm: 6px;
-    --r-lg: 14px;
-  }
+      --ui: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', monospace;
+      --r: 10px;
+      --r-sm: 6px;
+      --r-lg: 14px;
+    }
 
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:var(--ui); background:var(--bg); color:var(--t); min-height:100vh; -webkit-font-smoothing:antialiased; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-  /* Dot grid background */
-  body::after {
-    content:''; position:fixed; inset:0; pointer-events:none;
-    background-image:radial-gradient(rgba(201,123,90,0.025) 1px, transparent 1px);
-    background-size:28px 28px;
-  }
+    body {
+      font-family: var(--ui);
+      background: var(--bg);
+      color: var(--t);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
 
-  /* Reduced motion */
-  @media(prefers-reduced-motion:reduce) {
-    *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
-  }
+    /* Dot grid background */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(201, 123, 90, 0.025) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
 
-  .app { max-width:920px; margin:0 auto; padding:40px 24px 60px; position:relative; z-index:1; }
+    /* Reduced motion */
+    @media(prefers-reduced-motion:reduce) {
 
-  /* ── Header ── */
-  .hd { margin-bottom:28px; }
-  .hd-top { display:flex; align-items:center; gap:14px; margin-bottom:6px; }
-  .hd-logo {
-    width:42px; height:42px; border:1.5px solid var(--brd); border-radius:var(--r);
-    display:flex; align-items:center; justify-content:center;
-    background:var(--bg1); color:var(--acc); flex-shrink:0;
-  }
-  .hd-logo svg { width:20px; height:20px; }
-  .hd h1 { font-size:22px; font-weight:700; color:var(--th); letter-spacing:-0.4px; }
-  .hd-desc { color:var(--td); font-size:13px; margin-left:56px; line-height:1.5; }
-  .hd-desc code {
-    font-family:var(--mono); font-size:11px; color:var(--acc);
-    background:var(--acc-s); padding:1px 5px; border-radius:3px;
-  }
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
 
-  /* Trust badges */
-  .trust-row {
-    display:flex; gap:8px; margin:12px 0 0 56px; flex-wrap:wrap;
-  }
-  .trust-badge {
-    display:inline-flex; align-items:center; gap:5px;
-    font-size:10px; font-weight:500; letter-spacing:0.2px;
-    color:var(--td); background:var(--bg1); border:1px solid var(--brd);
-    border-radius:20px; padding:4px 10px;
-  }
-  .trust-badge svg { width:11px; height:11px; }
-  .trust-badge.green { color:var(--grn); border-color:rgba(34,197,94,0.2); }
-  .trust-badge.blue { color:var(--blu); border-color:rgba(59,130,246,0.2); }
+    .app {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+      position: relative;
+      z-index: 1;
+    }
 
-  /* ── Alert Bar ── */
-  .alert-bar {
-    display:flex; align-items:center; gap:10px; padding:10px 16px;
-    background:var(--ylw-s); border:1px solid rgba(234,179,8,0.25);
-    border-radius:var(--r); margin-bottom:20px; font-size:13px; color:var(--ylw);
-  }
-  .alert-bar svg { width:16px; height:16px; flex-shrink:0; }
-  .alert-bar strong { color:#facc15; }
+    /* ── Header ── */
+    .hd {
+      margin-bottom: 28px;
+    }
 
-  /* ── Stats ── */
-  .stats {
-    display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px;
-  }
-  .stat-card {
-    background:var(--bg1); border:1px solid var(--brd); border-radius:var(--r);
-    padding:16px; position:relative; overflow:hidden; transition:border-color 0.2s;
-  }
-  .stat-card:hover { border-color:var(--brd2); }
-  .stat-icon {
-    width:32px; height:32px; border-radius:8px; display:flex; align-items:center;
-    justify-content:center; margin-bottom:10px;
-  }
-  .stat-icon svg { width:16px; height:16px; }
-  .stat-icon.amber { background:var(--acc-s); color:var(--acc); }
-  .stat-icon.blue { background:var(--blu-s); color:var(--blu); }
-  .stat-icon.green { background:var(--grn-s); color:var(--grn); }
-  .stat-icon.red { background:var(--red-s); color:var(--red); }
-  .stat-val { font-size:28px; font-weight:700; color:var(--th); font-family:var(--mono); line-height:1; }
-  .stat-lbl { font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:0.6px; color:var(--td); margin-top:4px; }
+    .hd-top {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+    }
 
-  /* ── Toolbar ── */
-  .toolbar { display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
-  .spacer { flex:1; }
+    .hd-logo {
+      width: 42px;
+      height: 42px;
+      border: 1.5px solid var(--brd);
+      border-radius: var(--r);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg1);
+      color: var(--acc);
+      flex-shrink: 0;
+    }
 
-  .search-box {
-    position:relative; display:flex; align-items:center;
-  }
-  .search-box svg {
-    position:absolute; left:10px; width:14px; height:14px; color:var(--td); pointer-events:none;
-  }
-  .search-box input {
-    width:180px; padding:8px 12px 8px 32px; background:var(--bg1); border:1px solid var(--brd);
-    border-radius:7px; color:var(--tb); font-family:var(--ui); font-size:12px; outline:none;
-    transition:border-color 0.2s, width 0.25s;
-  }
-  .search-box input:focus { border-color:var(--brd-focus); width:240px; }
-  .search-box input::placeholder { color:var(--td); }
-  .search-box .kbd {
-    position:absolute; right:8px; font-size:9px; font-family:var(--mono);
-    color:var(--td); background:var(--bg3); border:1px solid var(--brd);
-    border-radius:3px; padding:1px 4px; pointer-events:none;
-  }
+    .hd-logo svg {
+      width: 20px;
+      height: 20px;
+    }
 
-  /* ── Buttons ── */
-  .btn {
-    font-family:var(--ui); font-size:12px; font-weight:600;
-    border:1px solid var(--brd); border-radius:7px; padding:8px 14px;
-    cursor:pointer; transition:all 0.2s; display:inline-flex;
-    align-items:center; gap:6px; background:var(--bg1); color:var(--t); outline:none;
-  }
-  .btn:hover { border-color:var(--brd2); color:var(--tb); }
-  .btn:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
-  .btn svg { width:13px; height:13px; }
-  .btn-primary { background:var(--acc); border-color:var(--acc); color:#0a0a0f; font-weight:700; }
-  .btn-primary:hover { background:var(--acc-h); border-color:var(--acc-h); box-shadow:0 0 20px var(--acc-s); }
-  .btn-green { background:var(--grn); border-color:var(--grn); color:#0a0a0f; font-weight:700; }
-  .btn-green:hover { background:#34d369; box-shadow:0 0 20px var(--grn-s); }
-  .btn-danger { color:var(--red); border-color:rgba(239,68,68,0.3); }
-  .btn-danger:hover { background:var(--red-s); border-color:var(--red); }
-  .btn-sm { padding:5px 10px; font-size:11px; }
+    .hd h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--th);
+      letter-spacing: -0.4px;
+    }
 
-  /* ── Account List ── */
-  .accs { display:flex; flex-direction:column; gap:3px; margin-bottom:28px; }
-  .acc-row {
-    display:flex; align-items:center; gap:14px; padding:14px 16px;
-    background:var(--bg1); border:1px solid transparent; border-radius:var(--r);
-    border-left:3px solid transparent; transition:all 0.2s; cursor:default;
-  }
-  .acc-row:hover { background:var(--bg2); border-color:var(--brd); }
-  .acc-row.status-ok { border-left-color:var(--grn); }
-  .acc-row.status-warn { border-left-color:var(--ylw); }
-  .acc-row.status-err { border-left-color:var(--red); }
-  .acc-row.status-none { border-left-color:var(--td); }
+    .hd-desc {
+      color: var(--td);
+      font-size: 13px;
+      margin-left: 56px;
+      line-height: 1.5;
+    }
 
-  .av {
-    width:38px; height:38px; border-radius:8px; display:flex; align-items:center;
-    justify-content:center; font-weight:700; font-size:13px; color:#0a0a0f;
-    text-transform:uppercase; flex-shrink:0; letter-spacing:0.5px;
-  }
-  .acc-body { flex:1; min-width:0; }
-  .acc-name-row { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--tb); flex-wrap:wrap; }
-  .alias {
-    font-family:var(--mono); font-size:10px; font-weight:500; color:var(--acc);
-    background:var(--acc-s); padding:2px 7px; border-radius:3px;
-  }
-  .tag {
-    font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.4px;
-    padding:2px 6px; border-radius:3px; display:inline-flex; align-items:center; gap:3px;
-  }
-  .tag svg { width:9px; height:9px; }
-  .tag-api { background:var(--blu-s); color:var(--blu); }
-  .tag-oauth { background:var(--grn-s); color:var(--grn); }
-  .tag-exp { background:var(--red-s); color:var(--red); }
-  .tag-warn { background:var(--ylw-s); color:var(--ylw); }
-  .tag-ok { background:var(--grn-s); color:var(--grn); }
+    .hd-desc code {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--acc);
+      background: var(--acc-s);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
 
-  .acc-meta {
-    font-size:11px; font-family:var(--mono); color:var(--td); margin-top:3px;
-    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-  }
+    /* Trust badges */
+    .trust-row {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 0 56px;
+      flex-wrap: wrap;
+    }
 
-  .row-actions { display:flex; gap:4px; align-items:center; }
-  .row-actions .btn-copy { opacity:1; }
-  .row-actions .ib-group { display:flex; gap:3px; opacity:0; transition:opacity 0.15s; }
-  .acc-row:hover .ib-group { opacity:1; }
+    .trust-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      color: var(--td);
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
 
-  .ib {
-    width:30px; height:30px; border-radius:var(--r-sm); border:1px solid var(--brd);
-    background:var(--bg); color:var(--td); cursor:pointer; display:flex;
-    align-items:center; justify-content:center; transition:all 0.2s; outline:none;
-  }
-  .ib:hover { border-color:var(--brd2); color:var(--tb); }
-  .ib:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
-  .ib.del:hover { border-color:var(--red); color:var(--red); background:var(--red-s); }
-  .ib.cap:hover { border-color:var(--grn); color:var(--grn); background:var(--grn-s); }
-  .ib.ref:hover { border-color:var(--blu); color:var(--blu); background:var(--blu-s); }
-  .ib.ref.spinning svg { animation:spin 0.8s linear infinite; }
-  @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    .trust-badge svg {
+      width: 11px;
+      height: 11px;
+    }
 
-  /* ── Terminal Overlay ── */
-  .term-overlay {
-    position:fixed; inset:0; z-index:3000; background:var(--bg);
-    display:none; flex-direction:column;
-  }
-  .term-overlay.on { display:flex; }
-  .term-bar {
-    display:flex; align-items:center; gap:8px; padding:8px 14px;
-    background:var(--bg1); border-bottom:1px solid var(--brd); flex-shrink:0;
-  }
-  .term-bar .term-dots { display:flex; gap:4px; }
-  .term-bar .term-title {
-    font-family:var(--mono); font-size:12px; color:var(--td); font-weight:500;
-  }
-  .term-bar .term-spacer { flex:1; }
-  .term-bar .term-close {
-    width:28px; height:28px; border-radius:var(--r-sm); border:1px solid var(--brd);
-    background:transparent; color:var(--td); cursor:pointer; display:flex;
-    align-items:center; justify-content:center; transition:all 0.15s; outline:none;
-  }
-  .term-bar .term-close:hover { border-color:var(--red); color:var(--red); }
-  .term-bar .term-close svg { width:14px; height:14px; }
-  #term-container { flex:1; overflow:hidden; padding:4px; }
-  .ib svg { width:13px; height:13px; }
+    .trust-badge.green {
+      color: var(--grn);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
 
-  /* ── Empty / Onboarding ── */
-  .onboarding {
-    text-align:center; padding:48px 24px; border:1px dashed var(--brd);
-    border-radius:var(--r-lg); margin-bottom:28px; background:var(--bg1);
-  }
-  .ob-icon {
-    width:64px; height:64px; border-radius:16px; background:var(--acc-s);
-    display:inline-flex; align-items:center; justify-content:center; margin-bottom:16px;
-  }
-  .ob-icon svg { width:28px; height:28px; color:var(--acc); }
-  .onboarding h3 { color:var(--th); font-size:18px; font-weight:700; margin-bottom:6px; }
-  .onboarding p { color:var(--td); font-size:13px; line-height:1.6; max-width:420px; margin:0 auto 20px; }
-  .use-cases { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-bottom:20px; }
-  .use-case {
-    padding:12px 16px; background:var(--bg3); border:1px solid var(--brd);
-    border-radius:var(--r); text-align:left; min-width:140px; transition:all 0.2s; cursor:default;
-  }
-  .use-case:hover { border-color:var(--brd2); }
-  .uc-title { font-size:12px; font-weight:600; color:var(--tb); margin-bottom:2px; }
-  .uc-desc { font-size:10px; color:var(--td); }
-  .uc-icon { margin-bottom:6px; }
-  .uc-icon svg { width:18px; height:18px; }
+    .trust-badge.blue {
+      color: var(--blu);
+      border-color: rgba(59, 130, 246, 0.2);
+    }
 
-  /* ── Terminal ── */
-  .ts { margin-bottom:28px; }
-  .ts-toggle {
-    display:flex; align-items:center; gap:8px; padding:10px 14px;
-    background:var(--bg1); border:1px solid var(--brd); border-radius:var(--r);
-    cursor:pointer; transition:all 0.2s; width:100%;
-    font-family:var(--ui); font-size:12px; font-weight:600; color:var(--td);
-    text-transform:uppercase; letter-spacing:0.4px; outline:none;
-  }
-  .ts-toggle:hover { border-color:var(--brd2); color:var(--t); }
-  .ts-toggle:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
-  .ts-toggle svg { width:13px; height:13px; }
-  .ts-toggle .chevron { transition:transform 0.2s; margin-left:auto; }
-  .ts-toggle.open .chevron { transform:rotate(180deg); }
-  .ts-toggle .ts-icon { color:var(--acc); }
+    /* ── Alert Bar ── */
+    .alert-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--ylw-s);
+      border: 1px solid rgba(234, 179, 8, 0.25);
+      border-radius: var(--r);
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: var(--ylw);
+    }
 
-  .ts-content { display:none; margin-top:8px; }
-  .ts-content.open { display:block; }
+    .alert-bar svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
 
-  .tb { background:var(--bg3); border:1px solid var(--brd); border-radius:var(--r); overflow:hidden; }
-  .tb-bar {
-    padding:8px 14px; background:var(--bg1); border-bottom:1px solid var(--brd);
-    display:flex; align-items:center; gap:6px;
-  }
-  .dot { width:7px; height:7px; border-radius:50%; }
-  .dot-r { background:#ef4444; } .dot-y { background:#eab308; } .dot-g { background:#22c55e; }
-  .tb-c {
-    padding:16px; font-family:var(--mono); font-size:11.5px; line-height:1.8;
-    color:var(--t); white-space:pre-wrap; word-break:break-all; max-height:240px; overflow-y:auto;
-  }
-  .tb-c .p { color:var(--grn); } .tb-c .c { color:var(--td); }
-  .tb-c .k { color:var(--acc-h); } .tb-c .v { color:var(--blu); }
+    .alert-bar strong {
+      color: #facc15;
+    }
 
-  .tb-footer { display:flex; align-items:center; gap:8px; margin-top:8px; }
-  .tb-footer input {
-    flex:1; padding:8px 12px; background:var(--bg3); border:1px solid var(--brd);
-    border-radius:var(--r-sm); color:var(--acc); font-family:var(--mono); font-size:11px; outline:none;
-  }
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
 
-  /* ── Modals ── */
-  .overlay {
-    position:fixed; inset:0; background:rgba(4,5,8,0.88); backdrop-filter:blur(8px);
-    z-index:1000; display:flex; align-items:center; justify-content:center;
-    opacity:0; pointer-events:none; transition:opacity 0.2s;
-  }
-  .overlay.on { opacity:1; pointer-events:all; }
-  .modal {
-    background:var(--bg1); border:1px solid var(--brd); border-radius:var(--r-lg);
-    width:480px; max-width:92vw; max-height:90vh; overflow-y:auto;
-    transform:translateY(16px) scale(0.98);
-    transition:transform 0.25s cubic-bezier(0.16,1,0.3,1);
-    box-shadow:0 24px 64px rgba(0,0,0,0.6);
-  }
-  .overlay.on .modal { transform:translateY(0) scale(1); }
-  .md-h {
-    padding:20px 20px 0; display:flex; align-items:center; justify-content:space-between;
-  }
-  .md-h h2 { font-size:16px; font-weight:700; color:var(--th); }
-  .md-close {
-    width:28px; height:28px; border-radius:var(--r-sm); border:1px solid var(--brd);
-    background:transparent; color:var(--td); cursor:pointer; display:flex;
-    align-items:center; justify-content:center; transition:all 0.15s; outline:none;
-  }
-  .md-close:hover { border-color:var(--red); color:var(--red); }
-  .md-close:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
-  .md-close svg { width:14px; height:14px; }
-  .md-body { padding:20px; }
-  .md-footer { padding:0 20px 20px; display:flex; gap:8px; justify-content:flex-end; }
+    .stat-card {
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
 
-  /* Form */
-  .fg { margin-bottom:16px; }
-  .fl {
-    display:block; font-size:10px; font-weight:600; text-transform:uppercase;
-    letter-spacing:0.5px; color:var(--td); margin-bottom:5px;
-  }
-  .fi {
-    width:100%; padding:9px 12px; background:var(--bg3); border:1px solid var(--brd);
-    border-radius:7px; color:var(--tb); font-family:var(--mono); font-size:12px;
-    outline:none; transition:border-color 0.2s;
-  }
-  .fi:focus { border-color:var(--brd-focus); }
-  .fi::placeholder { color:var(--td); }
-  .fh { font-size:10px; color:var(--td); margin-top:3px; font-style:italic; }
+    .stat-card:hover {
+      border-color: var(--brd2);
+    }
 
-  .auth-choice { display:flex; gap:8px; }
-  .auth-opt {
-    flex:1; padding:14px; background:var(--bg3); border:2px solid var(--brd);
-    border-radius:var(--r); cursor:pointer; transition:all 0.2s; text-align:center;
-  }
-  .auth-opt:hover { border-color:var(--brd2); }
-  .auth-opt.on { border-color:var(--acc); background:var(--acc-s); }
-  .auth-opt-icon {
-    width:36px; height:36px; border-radius:8px; display:inline-flex;
-    align-items:center; justify-content:center; margin-bottom:6px;
-  }
-  .auth-opt-icon svg { width:18px; height:18px; }
-  .auth-opt-icon.key-icon { background:var(--blu-s); color:var(--blu); }
-  .auth-opt-icon.oauth-icon { background:var(--grn-s); color:var(--grn); }
-  .auth-opt-name { font-size:13px; font-weight:600; color:var(--tb); }
-  .auth-opt-desc { font-size:10px; color:var(--td); margin-top:2px; font-family:var(--mono); }
+    .stat-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
 
-  .info-box {
-    background:var(--bg3); border:1px solid var(--brd); border-radius:var(--r);
-    padding:12px 14px; font-size:12px; color:var(--t); line-height:1.6;
-  }
-  .info-box code {
-    font-family:var(--mono); font-size:11px; color:var(--acc);
-    background:var(--acc-s); padding:1px 5px; border-radius:2px;
-  }
-  .info-box strong { color:var(--tb); }
+    .stat-icon svg {
+      width: 16px;
+      height: 16px;
+    }
 
-  /* Confirm modal */
-  .confirm-center { text-align:center; padding:8px 0 16px; }
-  .confirm-icon {
-    width:48px; height:48px; border-radius:50%; background:var(--red-s);
-    display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px;
-  }
-  .confirm-icon svg { width:22px; height:22px; color:var(--red); }
-  .confirm-center h3 { font-size:15px; color:var(--th); margin-bottom:4px; }
-  .confirm-center p { font-size:12px; color:var(--td); }
+    .stat-icon.amber {
+      background: var(--acc-s);
+      color: var(--acc);
+    }
 
-  /* ── Toasts ── */
-  .toasts { position:fixed; top:16px; right:16px; z-index:2000; display:flex; flex-direction:column; gap:6px; }
-  .toast {
-    background:var(--bg1); border:1px solid var(--brd); border-radius:var(--r);
-    padding:10px 14px; font-size:12px; color:var(--tb); display:flex;
-    align-items:center; gap:8px; box-shadow:0 8px 30px rgba(0,0,0,0.5);
-    animation:toast-in 0.25s cubic-bezier(0.16,1,0.3,1); max-width:320px;
-  }
-  .toast.ok { border-left:3px solid var(--grn); }
-  .toast.err { border-left:3px solid var(--red); }
-  .toast.info { border-left:3px solid var(--blu); }
-  .toast svg { width:14px; height:14px; flex-shrink:0; }
-  .toast.ok svg { color:var(--grn); } .toast.err svg { color:var(--red); } .toast.info svg { color:var(--blu); }
-  @keyframes toast-in { from { transform:translateX(24px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+    .stat-icon.blue {
+      background: var(--blu-s);
+      color: var(--blu);
+    }
 
-  /* ── Status badge ── */
-  .db-badge {
-    display:inline-flex; align-items:center; gap:5px; font-family:var(--mono);
-    font-size:10px; color:var(--td); background:var(--bg1); border:1px solid var(--brd);
-    border-radius:20px; padding:4px 10px;
-  }
-  .dot-live { width:5px; height:5px; border-radius:50%; background:var(--grn); animation:pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+    .stat-icon.green {
+      background: var(--grn-s);
+      color: var(--grn);
+    }
 
-  /* ── Keyboard hints ── */
-  .footer-hints {
-    display:flex; justify-content:center; gap:16px; padding:16px 0 0;
-    font-size:10px; color:var(--td);
-  }
-  .footer-hints span { display:inline-flex; align-items:center; gap:4px; }
-  .footer-hints kbd {
-    font-family:var(--mono); font-size:9px; background:var(--bg1);
-    border:1px solid var(--brd); border-radius:3px; padding:1px 5px; color:var(--t);
-  }
+    .stat-icon.red {
+      background: var(--red-s);
+      color: var(--red);
+    }
 
-  /* No results */
-  .no-results { text-align:center; padding:32px; color:var(--td); font-size:13px; }
+    .stat-val {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--th);
+      font-family: var(--mono);
+      line-height: 1;
+    }
 
-  /* ── Responsive ── */
-  @media(max-width:700px) {
-    .stats { grid-template-columns:repeat(2,1fr); }
-    .toolbar { flex-direction:column; }
-    .spacer { display:none; }
-    .search-box input { width:100%; }
-    .search-box input:focus { width:100%; }
-    .auth-choice { flex-direction:column; }
-    .ib-group { opacity:1 !important; }
-    .row-actions { flex-wrap:wrap; }
-    .use-cases { flex-direction:column; align-items:center; }
-    .trust-row { margin-left:0; }
-    .footer-hints { flex-wrap:wrap; justify-content:center; }
-    .hd-desc { margin-left:0; }
-  }
-  @media(max-width:400px) {
-    .stats { grid-template-columns:1fr 1fr; }
-    .acc-row { flex-direction:column; align-items:flex-start; gap:10px; }
-    .row-actions { width:100%; justify-content:flex-end; }
-  }
-</style>
+    .stat-lbl {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--td);
+      margin-top: 4px;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .spacer {
+      flex: 1;
+    }
+
+    .search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .search-box svg {
+      position: absolute;
+      left: 10px;
+      width: 14px;
+      height: 14px;
+      color: var(--td);
+      pointer-events: none;
+    }
+
+    .search-box input {
+      width: 180px;
+      padding: 8px 12px 8px 32px;
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: 7px;
+      color: var(--tb);
+      font-family: var(--ui);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s, width 0.25s;
+    }
+
+    .search-box input:focus {
+      border-color: var(--brd-focus);
+      width: 240px;
+    }
+
+    .search-box input::placeholder {
+      color: var(--td);
+    }
+
+    .search-box .kbd {
+      position: absolute;
+      right: 8px;
+      font-size: 9px;
+      font-family: var(--mono);
+      color: var(--td);
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: 3px;
+      padding: 1px 4px;
+      pointer-events: none;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      font-family: var(--ui);
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--brd);
+      border-radius: 7px;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg1);
+      color: var(--t);
+      outline: none;
+    }
+
+    .btn:hover {
+      border-color: var(--brd2);
+      color: var(--tb);
+    }
+
+    .btn:focus-visible {
+      outline: 2px solid var(--acc);
+      outline-offset: 2px;
+    }
+
+    .btn svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    .btn-primary {
+      background: var(--acc);
+      border-color: var(--acc);
+      color: #0a0a0f;
+      font-weight: 700;
+    }
+
+    .btn-primary:hover {
+      background: var(--acc-h);
+      border-color: var(--acc-h);
+      box-shadow: 0 0 20px var(--acc-s);
+    }
+
+    .btn-green {
+      background: var(--grn);
+      border-color: var(--grn);
+      color: #0a0a0f;
+      font-weight: 700;
+    }
+
+    .btn-green:hover {
+      background: #34d369;
+      box-shadow: 0 0 20px var(--grn-s);
+    }
+
+    .btn-danger {
+      color: var(--red);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: var(--red-s);
+      border-color: var(--red);
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 11px;
+    }
+
+    /* ── Account List ── */
+    .accs {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      margin-bottom: 28px;
+    }
+
+    .acc-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--bg1);
+      border: 1px solid transparent;
+      border-radius: var(--r);
+      border-left: 3px solid transparent;
+      transition: all 0.2s;
+      cursor: default;
+    }
+
+    .acc-row:hover {
+      background: var(--bg2);
+      border-color: var(--brd);
+    }
+
+    .acc-row.status-ok {
+      border-left-color: var(--grn);
+    }
+
+    .acc-row.status-warn {
+      border-left-color: var(--ylw);
+    }
+
+    .acc-row.status-err {
+      border-left-color: var(--red);
+    }
+
+    .acc-row.status-none {
+      border-left-color: var(--td);
+    }
+
+    .av {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      color: #0a0a0f;
+      text-transform: uppercase;
+      flex-shrink: 0;
+      letter-spacing: 0.5px;
+    }
+
+    .acc-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .acc-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--tb);
+      flex-wrap: wrap;
+    }
+
+    .alias {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--acc);
+      background: var(--acc-s);
+      padding: 2px 7px;
+      border-radius: 3px;
+    }
+
+    .tag {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .tag svg {
+      width: 9px;
+      height: 9px;
+    }
+
+    .tag-api {
+      background: var(--blu-s);
+      color: var(--blu);
+    }
+
+    .tag-oauth {
+      background: var(--grn-s);
+      color: var(--grn);
+    }
+
+    .tag-exp {
+      background: var(--red-s);
+      color: var(--red);
+    }
+
+    .tag-warn {
+      background: var(--ylw-s);
+      color: var(--ylw);
+    }
+
+    .tag-ok {
+      background: var(--grn-s);
+      color: var(--grn);
+    }
+
+    .acc-meta {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--td);
+      margin-top: 3px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .row-actions {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .row-actions .btn-copy {
+      opacity: 1;
+    }
+
+    .row-actions .ib-group {
+      display: flex;
+      gap: 3px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .acc-row:hover .ib-group {
+      opacity: 1;
+    }
+
+    .ib {
+      width: 30px;
+      height: 30px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--brd);
+      background: var(--bg);
+      color: var(--td);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      outline: none;
+    }
+
+    .ib:hover {
+      border-color: var(--brd2);
+      color: var(--tb);
+    }
+
+    .ib:focus-visible {
+      outline: 2px solid var(--acc);
+      outline-offset: 2px;
+    }
+
+    .ib.del:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: var(--red-s);
+    }
+
+    .ib.cap:hover {
+      border-color: var(--grn);
+      color: var(--grn);
+      background: var(--grn-s);
+    }
+
+    .ib.ref:hover {
+      border-color: var(--blu);
+      color: var(--blu);
+      background: var(--blu-s);
+    }
+
+    .ib.ref.spinning svg {
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ── Terminal Overlay ── */
+    .term-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      background: var(--bg);
+      display: none;
+      flex-direction: column;
+    }
+
+    .term-overlay.on {
+      display: flex;
+    }
+
+    .term-login-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-left: 8px;
+    }
+
+    .term-login-badge.waiting {
+      background: var(--ylw-s);
+      color: var(--ylw);
+    }
+
+    .term-login-badge.done {
+      background: var(--grn-s);
+      color: var(--grn);
+    }
+
+    .term-login-badge svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .term-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--brd);
+      flex-shrink: 0;
+    }
+
+    .term-bar .term-dots {
+      display: flex;
+      gap: 4px;
+    }
+
+    .term-bar .term-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--td);
+      font-weight: 500;
+    }
+
+    .term-bar .term-spacer {
+      flex: 1;
+    }
+
+    .term-bar .term-close {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--brd);
+      background: transparent;
+      color: var(--td);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      outline: none;
+    }
+
+    .term-bar .term-close:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .term-bar .term-close svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    #term-container {
+      flex: 1;
+      overflow: hidden;
+      padding: 4px;
+    }
+
+    .ib svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    /* ── Empty / Onboarding ── */
+    .onboarding {
+      text-align: center;
+      padding: 48px 24px;
+      border: 1px dashed var(--brd);
+      border-radius: var(--r-lg);
+      margin-bottom: 28px;
+      background: var(--bg1);
+    }
+
+    .ob-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: var(--acc-s);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    .ob-icon svg {
+      width: 28px;
+      height: 28px;
+      color: var(--acc);
+    }
+
+    .onboarding h3 {
+      color: var(--th);
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .onboarding p {
+      color: var(--td);
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 420px;
+      margin: 0 auto 20px;
+    }
+
+    .use-cases {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .use-case {
+      padding: 12px 16px;
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      text-align: left;
+      min-width: 140px;
+      transition: all 0.2s;
+      cursor: default;
+    }
+
+    .use-case:hover {
+      border-color: var(--brd2);
+    }
+
+    .uc-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--tb);
+      margin-bottom: 2px;
+    }
+
+    .uc-desc {
+      font-size: 10px;
+      color: var(--td);
+    }
+
+    .uc-icon {
+      margin-bottom: 6px;
+    }
+
+    .uc-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ── Terminal ── */
+    .ts {
+      margin-bottom: 28px;
+    }
+
+    .ts-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      font-family: var(--ui);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--td);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      outline: none;
+    }
+
+    .ts-toggle:hover {
+      border-color: var(--brd2);
+      color: var(--t);
+    }
+
+    .ts-toggle:focus-visible {
+      outline: 2px solid var(--acc);
+      outline-offset: 2px;
+    }
+
+    .ts-toggle svg {
+      width: 13px;
+      height: 13px;
+    }
+
+    .ts-toggle .chevron {
+      transition: transform 0.2s;
+      margin-left: auto;
+    }
+
+    .ts-toggle.open .chevron {
+      transform: rotate(180deg);
+    }
+
+    .ts-toggle .ts-icon {
+      color: var(--acc);
+    }
+
+    .ts-content {
+      display: none;
+      margin-top: 8px;
+    }
+
+    .ts-content.open {
+      display: block;
+    }
+
+    .tb {
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      overflow: hidden;
+    }
+
+    .tb-bar {
+      padding: 8px 14px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--brd);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .dot-r {
+      background: #ef4444;
+    }
+
+    .dot-y {
+      background: #eab308;
+    }
+
+    .dot-g {
+      background: #22c55e;
+    }
+
+    .tb-c {
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      line-height: 1.8;
+      color: var(--t);
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .tb-c .p {
+      color: var(--grn);
+    }
+
+    .tb-c .c {
+      color: var(--td);
+    }
+
+    .tb-c .k {
+      color: var(--acc-h);
+    }
+
+    .tb-c .v {
+      color: var(--blu);
+    }
+
+    .tb-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .tb-footer input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: var(--r-sm);
+      color: var(--acc);
+      font-family: var(--mono);
+      font-size: 11px;
+      outline: none;
+    }
+
+    /* ── Modals ── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 5, 8, 0.88);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .overlay.on {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: var(--r-lg);
+      width: 480px;
+      max-width: 92vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    }
+
+    .overlay.on .modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .md-h {
+      padding: 20px 20px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .md-h h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--th);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .md-h h2 svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .md-close {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--r-sm);
+      border: 1px solid var(--brd);
+      background: transparent;
+      color: var(--td);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      outline: none;
+    }
+
+    .md-close:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .md-close:focus-visible {
+      outline: 2px solid var(--acc);
+      outline-offset: 2px;
+    }
+
+    .md-close svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .md-body {
+      padding: 20px;
+    }
+
+    .md-footer {
+      padding: 0 20px 20px;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* Form */
+    .fg {
+      margin-bottom: 16px;
+    }
+
+    .fl {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--td);
+      margin-bottom: 5px;
+    }
+
+    .fi {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: 7px;
+      color: var(--tb);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .fi:focus {
+      border-color: var(--brd-focus);
+    }
+
+    .fi::placeholder {
+      color: var(--td);
+    }
+
+    .fh {
+      font-size: 10px;
+      color: var(--td);
+      margin-top: 3px;
+      font-style: italic;
+    }
+
+    .auth-choice {
+      display: flex;
+      gap: 8px;
+    }
+
+    .auth-opt {
+      flex: 1;
+      padding: 14px;
+      background: var(--bg3);
+      border: 2px solid var(--brd);
+      border-radius: var(--r);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .auth-opt:hover {
+      border-color: var(--brd2);
+    }
+
+    .auth-opt.on {
+      border-color: var(--acc);
+      background: var(--acc-s);
+    }
+
+    .auth-opt-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 6px;
+    }
+
+    .auth-opt-icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .auth-opt-icon.key-icon {
+      background: var(--blu-s);
+      color: var(--blu);
+    }
+
+    .auth-opt-icon.oauth-icon {
+      background: var(--grn-s);
+      color: var(--grn);
+    }
+
+    .auth-opt-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--tb);
+    }
+
+    .auth-opt-desc {
+      font-size: 10px;
+      color: var(--td);
+      margin-top: 2px;
+      font-family: var(--mono);
+    }
+
+    .info-box {
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      font-size: 12px;
+      color: var(--t);
+      line-height: 1.6;
+    }
+
+    .info-box code {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--acc);
+      background: var(--acc-s);
+      padding: 1px 5px;
+      border-radius: 2px;
+    }
+
+    .info-box strong {
+      color: var(--tb);
+    }
+
+    /* Confirm modal */
+    .confirm-center {
+      text-align: center;
+      padding: 8px 0 16px;
+    }
+
+    .confirm-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--red-s);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+
+    .confirm-icon svg {
+      width: 22px;
+      height: 22px;
+      color: var(--red);
+    }
+
+    .confirm-center h3 {
+      font-size: 15px;
+      color: var(--th);
+      margin-bottom: 4px;
+    }
+
+    .confirm-center p {
+      font-size: 12px;
+      color: var(--td);
+    }
+
+    /* ── Toasts ── */
+    .toasts {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .toast {
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--tb);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 320px;
+    }
+
+    .toast.ok {
+      border-left: 3px solid var(--grn);
+    }
+
+    .toast.err {
+      border-left: 3px solid var(--red);
+    }
+
+    .toast.info {
+      border-left: 3px solid var(--blu);
+    }
+
+    .toast svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .toast.ok svg {
+      color: var(--grn);
+    }
+
+    .toast.err svg {
+      color: var(--red);
+    }
+
+    .toast.info svg {
+      color: var(--blu);
+    }
+
+    @keyframes toast-in {
+      from {
+        transform: translateX(24px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* ── Status badge ── */
+    .db-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--td);
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+
+    .dot-live {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--grn);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .4
+      }
+    }
+
+    /* ── Keyboard hints ── */
+    .footer-hints {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      padding: 16px 0 0;
+      font-size: 10px;
+      color: var(--td);
+    }
+
+    .footer-hints span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .footer-hints kbd {
+      font-family: var(--mono);
+      font-size: 9px;
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: 3px;
+      padding: 1px 5px;
+      color: var(--t);
+    }
+
+    /* No results */
+    .no-results {
+      text-align: center;
+      padding: 32px;
+      color: var(--td);
+      font-size: 13px;
+    }
+
+    /* ── Directory Picker ── */
+    .dp-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--td);
+      padding: 8px 0;
+      flex-wrap: wrap;
+      min-height: 32px;
+    }
+
+    .dp-breadcrumb button {
+      background: none;
+      border: none;
+      color: var(--acc);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .dp-breadcrumb button:hover {
+      background: var(--acc-s);
+    }
+
+    .dp-breadcrumb .sep {
+      color: var(--td);
+      margin: 0 1px;
+    }
+
+    .dp-shortcuts {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .dp-shortcuts button {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 5px 10px;
+      background: var(--bg3);
+      border: 1px solid var(--brd);
+      border-radius: var(--r-sm);
+      color: var(--t);
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dp-shortcuts button:hover {
+      border-color: var(--acc);
+      color: var(--acc);
+    }
+
+    .dp-shortcuts button svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .dp-shortcuts .git-badge {
+      font-size: 9px;
+      color: var(--grn);
+      background: var(--grn-s);
+      padding: 1px 4px;
+      border-radius: 2px;
+      margin-left: 2px;
+    }
+
+    .dp-dirlist {
+      max-height: 280px;
+      overflow-y: auto;
+      border: 1px solid var(--brd);
+      border-radius: var(--r);
+      background: var(--bg3);
+    }
+
+    .dp-dirlist::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .dp-dirlist::-webkit-scrollbar-thumb {
+      background: var(--brd2);
+      border-radius: 3px;
+    }
+
+    .dp-dir {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--brd);
+      cursor: pointer;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--t);
+      transition: background 0.1s;
+    }
+
+    .dp-dir:last-child {
+      border-bottom: none;
+    }
+
+    .dp-dir:hover {
+      background: var(--bg2);
+      color: var(--tb);
+    }
+
+    .dp-dir.selected {
+      background: var(--acc-s);
+      border-left: 3px solid var(--acc);
+      color: var(--acc);
+    }
+
+    .dp-dir svg {
+      width: 14px;
+      height: 14px;
+      color: var(--ylw);
+      flex-shrink: 0;
+    }
+
+    .dp-dir .dp-arrow {
+      margin-left: auto;
+      color: var(--td);
+    }
+
+    .dp-dir .dp-arrow svg {
+      width: 10px;
+      height: 10px;
+    }
+
+    .dp-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--td);
+      font-size: 12px;
+    }
+
+    .dp-current {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--acc);
+      background: var(--acc-s);
+      padding: 6px 10px;
+      border-radius: var(--r-sm);
+      margin-top: 10px;
+      word-break: break-all;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dp-current svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+
+    /* ── Responsive ── */
+    @media(max-width:700px) {
+      .stats {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .toolbar {
+        flex-direction: column;
+      }
+
+      .spacer {
+        display: none;
+      }
+
+      .search-box input {
+        width: 100%;
+      }
+
+      .search-box input:focus {
+        width: 100%;
+      }
+
+      .auth-choice {
+        flex-direction: column;
+      }
+
+      .ib-group {
+        opacity: 1 !important;
+      }
+
+      .row-actions {
+        flex-wrap: wrap;
+      }
+
+      .use-cases {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .trust-row {
+        margin-left: 0;
+      }
+
+      .footer-hints {
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .hd-desc {
+        margin-left: 0;
+      }
+    }
+
+    @media(max-width:400px) {
+      .stats {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .acc-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .row-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="app" id="app"></div>
-<div class="toasts" id="toasts"></div>
+  <div class="app" id="app"></div>
+  <div class="toasts" id="toasts"></div>
 
-<!-- Terminal Overlay (persistent, outside #app to survive re-renders) -->
-<div class="term-overlay" id="term-overlay">
-  <div class="term-bar">
-    <span class="term-dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></span>
-    <span class="term-title" id="term-title">Terminal</span>
-    <span class="term-spacer"></span>
-    <button class="term-close" onclick="closeTerminal()" aria-label="Fermer le terminal">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
+  <!-- Terminal Overlay (persistent, outside #app to survive re-renders) -->
+  <div class="term-overlay" id="term-overlay">
+    <div class="term-bar">
+      <span class="term-dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span
+          class="dot dot-g"></span></span>
+      <span class="term-title" id="term-title">Terminal</span>
+      <span class="term-login-badge" id="term-login-badge" style="display:none"></span>
+      <span class="term-spacer"></span>
+      <button class="term-close" onclick="closeTerminal()" aria-label="Fermer le terminal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+    <div id="term-container"></div>
   </div>
-  <div id="term-container"></div>
-</div>
 
-<script>
-const API = '/api';
-const COLORS = ['#c97b5a','#22c55e','#3b82f6','#a855f7','#eab308','#6366f1','#06b6d4','#ef4444'];
-let accounts = [], modal = null, editId = null, deleteId = null, authType = 'api_key';
-let aliasScript = '', searchQuery = '', terminalOpen = false;
-let _socket = null, _term = null, _fitAddon = null;
+  <script>
+    const API = '/api';
+    const COLORS = ['#c97b5a', '#22c55e', '#3b82f6', '#a855f7', '#eab308', '#6366f1', '#06b6d4', '#ef4444'];
+    let accounts = [], modal = null, editId = null, deleteId = null, authType = 'api_key';
+    let aliasScript = '', searchQuery = '', terminalOpen = false;
+    let _socket = null, _term = null, _fitAddon = null;
+    let _loginMode = false, _loginAccountId = null;
 
-// ── Icons (SVG) ──
-const icons = {
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
-  globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
-  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
-  database: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
-  wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/></svg>',
-  terminal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
-  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
-  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
-  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
-  zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
-  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-  alertTriangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-  chevronDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-  heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-  fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-  briefcase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
-  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-  code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
-  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-  activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-  refreshCw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
-};
+    // Directory picker state
+    let _pickerVisible = false, _pickerCwd = '', _pickerDirs = [];
+    let _pickerShortcuts = [], _pickerProjects = [], _pickerParent = null;
+    let _pickerAction = null; // {type: 'launch'|'login', id, name}
 
-// ── API ──
-async function api(p, o = {}) {
-  const r = await fetch(API + p, {
-    headers: { 'Content-Type': 'application/json' },
-    ...o,
-    body: o.body ? JSON.stringify(o.body) : undefined
-  });
-  return r.json();
-}
+    // ── Icons (SVG) ──
+    const icons = {
+      plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
+      globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+      lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+      database: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>',
+      wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/></svg>',
+      terminal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+      copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+      trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+      download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+      upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+      zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+      check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+      x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+      alertTriangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      chevronDown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>',
+      search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+      fileText: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+      briefcase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+      user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+      code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+      folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+      folderOpen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M2 10h20"/></svg>',
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+      arrowRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>',
+      activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+      refreshCw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+    };
 
-function toast(m, t = 'ok') {
-  const iconSvg = { ok: icons.check, err: icons.x, info: icons.info }[t];
-  const el = document.createElement('div');
-  el.className = `toast ${t}`;
-  el.innerHTML = `${iconSvg}<span>${m}</span>`;
-  document.getElementById('toasts').appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.2s'; setTimeout(() => el.remove(), 200); }, 2800);
-}
+    // ── API ──
+    async function api(p, o = {}) {
+      const r = await fetch(API + p, {
+        headers: { 'Content-Type': 'application/json' },
+        ...o,
+        body: o.body ? JSON.stringify(o.body) : undefined
+      });
+      return r.json();
+    }
 
-async function load() {
-  accounts = await api('/accounts');
-  render();
-  // Auto-refresh expired tokens that have a refresh token
-  const expired = accounts.filter(a => a.auth_type === 'oauth' && a.token_status === 'expired' && a.has_refresh);
-  if (expired.length > 0) {
-    for (const a of expired) {
+    function toast(m, t = 'ok') {
+      const iconSvg = { ok: icons.check, err: icons.x, info: icons.info }[t];
+      const el = document.createElement('div');
+      el.className = `toast ${t}`;
+      el.innerHTML = `${iconSvg}<span>${m}</span>`;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.2s'; setTimeout(() => el.remove(), 200); }, 2800);
+    }
+
+    async function load() {
+      accounts = await api('/accounts');
+      render();
+      // Auto-refresh expired tokens that have a refresh token
+      const expired = accounts.filter(a => a.auth_type === 'oauth' && a.token_status === 'expired' && a.has_refresh);
+      if (expired.length > 0) {
+        for (const a of expired) {
+          try {
+            const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
+            if (!r.error) toast(`Auto-refresh : ${a.name}`);
+          } catch { }
+        }
+        accounts = await api('/accounts');
+        render();
+      }
+    }
+    async function loadAliases() { const r = await fetch(API + '/generate-aliases'); aliasScript = await r.text(); }
+
+    // ── Actions ──
+    async function addAccount() {
+      const n = document.getElementById('f-name').value.trim();
+      const k = document.getElementById('f-key')?.value.trim() || '';
+      const at = document.getElementById('f-at')?.value.trim() || '';
+      const rt = document.getElementById('f-rt')?.value.trim() || '';
+      const ex = parseInt(document.getElementById('f-ex')?.value || '0') || 0;
+      if (!n || n.length < 2) return toast('Nom invalide (min 2 caracteres)', 'err');
+      if (authType === 'api_key' && !k) return toast('Cle API requise', 'err');
+      const body = { name: n, auth_type: authType };
+      if (authType === 'api_key') body.api_key = k;
+      else { body.access_token = at; body.refresh_token = rt; body.expires_at = ex; }
+      const r = await api('/accounts', { method: 'POST', body });
+      if (r.error) return toast(r.error, 'err');
+      toast(`Compte "${n}" ajoute`); modal = null; await load(); await loadAliases();
+    }
+
+    async function updateAccount() {
+      const n = document.getElementById('f-name').value.trim();
+      const k = document.getElementById('f-key')?.value.trim() || '';
+      const at = document.getElementById('f-at')?.value.trim() || '';
+      const rt = document.getElementById('f-rt')?.value.trim() || '';
+      const ex = parseInt(document.getElementById('f-ex')?.value || '0') || 0;
+      const body = { name: n, auth_type: authType };
+      if (authType === 'api_key' && k) body.api_key = k;
+      if (authType === 'oauth') { if (at) body.access_token = at; if (rt) body.refresh_token = rt; if (ex) body.expires_at = ex; }
+      const r = await api(`/accounts/${editId}`, { method: 'PUT', body });
+      if (r.error) return toast(r.error, 'err');
+      toast('Compte modifie'); modal = null; editId = null; await load(); await loadAliases();
+    }
+
+    async function captureOAuth(id) {
+      const r = await api(`/accounts/${id}/capture-oauth`, { method: 'POST' });
+      if (r.error) return toast(r.error, 'err');
+      toast(`Token capture: ${r.token_preview}`); await load(); await loadAliases();
+    }
+
+    async function removeAccount() {
+      await api(`/accounts/${deleteId}`, { method: 'DELETE' });
+      toast('Compte supprime', 'info'); modal = null; deleteId = null; await load(); await loadAliases();
+    }
+
+    async function installAliases() {
+      const r = await api('/install-aliases', { method: 'POST' });
+      if (r.error) return toast(r.error, 'err');
+      toast(`${r.count} alias installes`);
+    }
+
+    async function refreshOAuth(id) {
+      const btn = document.querySelector(`[data-ref="${id}"]`);
+      if (btn) btn.classList.add('spinning');
       try {
-        const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
-        if (!r.error) toast(`Auto-refresh : ${a.name}`);
-      } catch {}
+        const r = await api(`/accounts/${id}/refresh-oauth`, { method: 'POST' });
+        if (r.error) { toast(r.error, 'err'); return; }
+        toast(`Token rafraîchi : ${r.token_preview}`);
+        await load(); await loadAliases();
+      } catch (e) { toast('Erreur refresh: ' + e.message, 'err'); }
+      finally { if (btn) btn.classList.remove('spinning'); }
     }
-    accounts = await api('/accounts');
-    render();
-  }
-}
-async function loadAliases() { const r = await fetch(API + '/generate-aliases'); aliasScript = await r.text(); }
 
-// ── Actions ──
-async function addAccount() {
-  const n = document.getElementById('f-name').value.trim();
-  const k = document.getElementById('f-key')?.value.trim() || '';
-  const at = document.getElementById('f-at')?.value.trim() || '';
-  const rt = document.getElementById('f-rt')?.value.trim() || '';
-  const ex = parseInt(document.getElementById('f-ex')?.value || '0') || 0;
-  if (!n || n.length < 2) return toast('Nom invalide (min 2 caracteres)', 'err');
-  if (authType === 'api_key' && !k) return toast('Cle API requise', 'err');
-  const body = { name: n, auth_type: authType };
-  if (authType === 'api_key') body.api_key = k;
-  else { body.access_token = at; body.refresh_token = rt; body.expires_at = ex; }
-  const r = await api('/accounts', { method: 'POST', body });
-  if (r.error) return toast(r.error, 'err');
-  toast(`Compte "${n}" ajoute`); modal = null; await load(); await loadAliases();
-}
-
-async function updateAccount() {
-  const n = document.getElementById('f-name').value.trim();
-  const k = document.getElementById('f-key')?.value.trim() || '';
-  const at = document.getElementById('f-at')?.value.trim() || '';
-  const rt = document.getElementById('f-rt')?.value.trim() || '';
-  const ex = parseInt(document.getElementById('f-ex')?.value || '0') || 0;
-  const body = { name: n, auth_type: authType };
-  if (authType === 'api_key' && k) body.api_key = k;
-  if (authType === 'oauth') { if (at) body.access_token = at; if (rt) body.refresh_token = rt; if (ex) body.expires_at = ex; }
-  const r = await api(`/accounts/${editId}`, { method: 'PUT', body });
-  if (r.error) return toast(r.error, 'err');
-  toast('Compte modifie'); modal = null; editId = null; await load(); await loadAliases();
-}
-
-async function captureOAuth(id) {
-  const r = await api(`/accounts/${id}/capture-oauth`, { method: 'POST' });
-  if (r.error) return toast(r.error, 'err');
-  toast(`Token capture: ${r.token_preview}`); await load(); await loadAliases();
-}
-
-async function removeAccount() {
-  await api(`/accounts/${deleteId}`, { method: 'DELETE' });
-  toast('Compte supprime', 'info'); modal = null; deleteId = null; await load(); await loadAliases();
-}
-
-async function installAliases() {
-  const r = await api('/install-aliases', { method: 'POST' });
-  if (r.error) return toast(r.error, 'err');
-  toast(`${r.count} alias installes`);
-}
-
-async function refreshOAuth(id) {
-  const btn = document.querySelector(`[data-ref="${id}"]`);
-  if (btn) btn.classList.add('spinning');
-  try {
-    const r = await api(`/accounts/${id}/refresh-oauth`, { method: 'POST' });
-    if (r.error) { toast(r.error, 'err'); return; }
-    toast(`Token rafraîchi : ${r.token_preview}`);
-    await load(); await loadAliases();
-  } catch (e) { toast('Erreur refresh: ' + e.message, 'err'); }
-  finally { if (btn) btn.classList.remove('spinning'); }
-}
-
-async function refreshAllOAuth() {
-  const oauthAccs = accounts.filter(a => a.auth_type === 'oauth' && a.has_refresh);
-  if (!oauthAccs.length) return toast('Aucun compte OAuth avec refresh token', 'info');
-  let ok = 0, fail = 0;
-  for (const a of oauthAccs) {
-    try {
-      const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
-      if (r.error) fail++; else ok++;
-    } catch { fail++; }
-  }
-  if (ok) toast(`${ok} token(s) rafraîchi(s)`);
-  if (fail) toast(`${fail} échec(s)`, 'err');
-  await load(); await loadAliases();
-}
-
-function launchTerminal(id, name) {
-  const overlay = document.getElementById('term-overlay');
-  overlay.classList.add('on');
-  document.getElementById('term-title').textContent = 'claude-' + name;
-
-  // Cleanup previous
-  if (_term) { _term.dispose(); _term = null; }
-  if (_socket) { _socket.disconnect(); _socket = null; }
-
-  // Create xterm instance with app-matching theme
-  _term = new Terminal({
-    cursorBlink: true,
-    fontSize: 13,
-    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-    theme: {
-      background: '#08090d', foreground: '#b0b3c4', cursor: '#c97b5a',
-      selectionBackground: 'rgba(201,123,90,0.3)',
-      black: '#1c1e30', red: '#ef4444', green: '#22c55e', yellow: '#eab308',
-      blue: '#3b82f6', magenta: '#a855f7', cyan: '#06b6d4', white: '#e8eaf0',
-      brightBlack: '#5c5e72', brightRed: '#f87171', brightGreen: '#4ade80',
-      brightYellow: '#facc15', brightBlue: '#60a5fa', brightMagenta: '#c084fc',
-      brightCyan: '#22d3ee', brightWhite: '#f1f3f9',
+    async function refreshAllOAuth() {
+      const oauthAccs = accounts.filter(a => a.auth_type === 'oauth' && a.has_refresh);
+      if (!oauthAccs.length) return toast('Aucun compte OAuth avec refresh token', 'info');
+      let ok = 0, fail = 0;
+      for (const a of oauthAccs) {
+        try {
+          const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
+          if (r.error) fail++; else ok++;
+        } catch { fail++; }
+      }
+      if (ok) toast(`${ok} token(s) rafraîchi(s)`);
+      if (fail) toast(`${fail} échec(s)`, 'err');
+      await load(); await loadAliases();
     }
-  });
-  _fitAddon = new FitAddon.FitAddon();
-  _term.loadAddon(_fitAddon);
 
-  const container = document.getElementById('term-container');
-  container.innerHTML = '';
-  _term.open(container);
-  _fitAddon.fit();
+    function _initTerminal(titleText) {
+      const overlay = document.getElementById('term-overlay');
+      overlay.classList.add('on');
+      document.getElementById('term-title').textContent = titleText;
 
-  // Connect WebSocket
-  _socket = io();
+      // Reset login badge
+      const badge = document.getElementById('term-login-badge');
+      badge.style.display = 'none';
+      badge.className = 'term-login-badge';
+      badge.innerHTML = '';
 
-  _socket.on('connect', () => {
-    _socket.emit('start_terminal', { account_id: id });
-  });
+      // Cleanup previous
+      if (_term) { _term.dispose(); _term = null; }
+      if (_socket) { _socket.disconnect(); _socket = null; }
+      _loginMode = false;
+      _loginAccountId = null;
 
-  _socket.on('terminal_started', () => {
-    _fitAddon.fit();
-    _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
-  });
+      // Create xterm instance with app-matching theme
+      _term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        theme: {
+          background: '#08090d', foreground: '#b0b3c4', cursor: '#c97b5a',
+          selectionBackground: 'rgba(201,123,90,0.3)',
+          black: '#1c1e30', red: '#ef4444', green: '#22c55e', yellow: '#eab308',
+          blue: '#3b82f6', magenta: '#a855f7', cyan: '#06b6d4', white: '#e8eaf0',
+          brightBlack: '#5c5e72', brightRed: '#f87171', brightGreen: '#4ade80',
+          brightYellow: '#facc15', brightBlue: '#60a5fa', brightMagenta: '#c084fc',
+          brightCyan: '#22d3ee', brightWhite: '#f1f3f9',
+        }
+      });
+      _fitAddon = new FitAddon.FitAddon();
+      _term.loadAddon(_fitAddon);
 
-  _socket.on('terminal_output', (d) => { _term.write(d.data); });
-  _socket.on('terminal_exit', () => { _term.write('\r\n\x1b[33m[Processus termine]\x1b[0m\r\n'); });
-  _socket.on('terminal_error', (d) => { _term.write('\r\n\x1b[31mErreur: ' + d.error + '\x1b[0m\r\n'); });
+      const container = document.getElementById('term-container');
+      container.innerHTML = '';
+      _term.open(container);
+      _fitAddon.fit();
 
-  // Send input to server
-  _term.onData((data) => {
-    if (_socket && _socket.connected) _socket.emit('terminal_input', { data });
-  });
+      // Connect WebSocket
+      _socket = io();
 
-  // Handle resize
-  const ro = new ResizeObserver(() => {
-    if (_fitAddon) _fitAddon.fit();
-    if (_socket && _socket.connected && _term) {
-      _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
+      _socket.on('terminal_started', () => {
+        _fitAddon.fit();
+        _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
+      });
+
+      _socket.on('terminal_output', (d) => { _term.write(d.data); });
+      _socket.on('terminal_exit', () => { _term.write('\r\n\x1b[33m[Processus termine]\x1b[0m\r\n'); });
+      _socket.on('terminal_error', (d) => { _term.write('\r\n\x1b[31mErreur: ' + d.error + '\x1b[0m\r\n'); });
+
+      // Login complete handler
+      _socket.on('login_complete', async (d) => {
+        const badge = document.getElementById('term-login-badge');
+        badge.className = 'term-login-badge done';
+        badge.innerHTML = `${icons.check} Tokens capturés`;
+        _term.write('\r\n\x1b[32m✓ Tokens OAuth capturés automatiquement!\x1b[0m\r\n');
+        toast(`Login réussi : ${d.token_preview}`);
+        await load();
+        await loadAliases();
+      });
+
+      // Send input to server
+      _term.onData((data) => {
+        if (_socket && _socket.connected) _socket.emit('terminal_input', { data });
+      });
+
+      // Handle resize
+      const ro = new ResizeObserver(() => {
+        if (_fitAddon) _fitAddon.fit();
+        if (_socket && _socket.connected && _term) {
+          _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
+        }
+      });
+      ro.observe(container);
+      _term._resizeObserver = ro;
     }
-  });
-  ro.observe(container);
-  _term._resizeObserver = ro;
-}
 
-function closeTerminal() {
-  document.getElementById('term-overlay').classList.remove('on');
-  if (_socket) { _socket.emit('stop_terminal'); _socket.disconnect(); _socket = null; }
-  if (_term) {
-    if (_term._resizeObserver) _term._resizeObserver.disconnect();
-    _term.dispose(); _term = null;
-  }
-  _fitAddon = null;
-}
-
-async function copyCmd(id) {
-  const r = await api(`/accounts/${id}/launch`, { method: 'POST' });
-  if (r.error) return toast(r.error, 'err');
-  await navigator.clipboard.writeText(r.command); toast('Commande copiee');
-}
-
-async function exportAcc() {
-  const d = await api('/export');
-  const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
-  const u = URL.createObjectURL(b);
-  const a = document.createElement('a'); a.href = u; a.download = 'claude-accounts.json'; a.click();
-  URL.revokeObjectURL(u); toast('Export telecharge');
-}
-
-async function importAcc() {
-  const i = document.createElement('input'); i.type = 'file'; i.accept = '.json';
-  i.onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    const t = await f.text();
-    try {
-      const d = JSON.parse(t);
-      const r = await api('/import', { method: 'POST', body: d });
-      toast(`${r.imported} importe(s)`); await load(); await loadAliases();
-    } catch { toast('Fichier invalide', 'err'); }
-  };
-  i.click();
-}
-
-async function dlScript() {
-  await loadAliases();
-  const b = new Blob([aliasScript], { type: 'text/x-sh' });
-  const u = URL.createObjectURL(b);
-  const a = document.createElement('a'); a.href = u; a.download = 'claude-aliases.sh'; a.click();
-  URL.revokeObjectURL(u); toast('Script telecharge');
-}
-
-async function cpScript() {
-  await loadAliases();
-  await navigator.clipboard.writeText(aliasScript);
-  toast('Script copie');
-}
-
-// ── Helpers ──
-function getStatusClass(a) {
-  if (a.auth_type === 'api_key') return a.masked_key ? 'status-ok' : 'status-err';
-  if (!a.masked_key) return 'status-warn';
-  if (a.token_status === 'expired') return 'status-err';
-  if (a.token_status === 'valid') return 'status-ok';
-  return 'status-ok';
-}
-
-function getAttentionCount() {
-  return accounts.filter(a => {
-    if (a.auth_type === 'oauth') {
-      if (!a.masked_key) return true;
-      if (a.token_status === 'expired') return true;
+    function launchTerminal(id, name) {
+      openDirPicker('launch', id, name);
     }
-    if (a.auth_type === 'api_key' && !a.masked_key) return true;
-    return false;
-  }).length;
-}
 
-function filterAccounts() {
-  if (!searchQuery) return accounts;
-  const q = searchQuery.toLowerCase();
-  return accounts.filter(a => a.name.includes(q) || a.auth_type.includes(q));
-}
+    function _doLaunchTerminal(id, name, cwd) {
+      _initTerminal('claude-' + name);
+      _socket.on('connect', () => {
+        _socket.emit('start_terminal', { account_id: id, cwd });
+      });
+    }
 
-// ── Render ──
-function render() {
-  const el = document.getElementById('app');
-  const apiN = accounts.filter(a => a.auth_type === 'api_key').length;
-  const oauthN = accounts.filter(a => a.auth_type === 'oauth').length;
-  const attentionN = getAttentionCount();
-  const healthyN = accounts.length - attentionN;
-  const filtered = filterAccounts();
+    function launchLogin(id, name) {
+      openDirPicker('login', id, name);
+    }
 
-  el.innerHTML = `
+    function _doLaunchLogin(id, name, cwd) {
+      _initTerminal('Login — claude-' + name);
+      _loginMode = true;
+      _loginAccountId = id;
+
+      // Show waiting badge
+      const badge = document.getElementById('term-login-badge');
+      badge.style.display = 'inline-flex';
+      badge.className = 'term-login-badge waiting';
+      badge.innerHTML = `${icons.zap} En attente d'auth...`;
+
+      _socket.on('connect', () => {
+        _socket.emit('start_login', { account_id: id, cwd });
+      });
+    }
+
+    async function addAccountAndLogin() {
+      const n = document.getElementById('f-name').value.trim();
+      if (!n || n.length < 2) return toast('Nom invalide (min 2 caractères)', 'err');
+      const body = { name: n, auth_type: 'oauth' };
+      const r = await api('/accounts', { method: 'POST', body });
+      if (r.error) return toast(r.error, 'err');
+      toast(`Compte "${n}" créé`);
+      modal = null;
+      await load();
+      await loadAliases();
+      // Immediately launch login for the new account
+      launchLogin(r.id, n);
+    }
+
+    // ── Directory Picker ──
+    async function openDirPicker(actionType, id, name) {
+      _pickerAction = { type: actionType, id, name };
+      _pickerVisible = true;
+      _pickerCwd = '';
+      _pickerDirs = [];
+      modal = 'picker';
+
+      // Load shortcuts and projects
+      try {
+        const data = await api('/recent-dirs');
+        _pickerShortcuts = data.shortcuts || [];
+        _pickerProjects = data.projects || [];
+      } catch { _pickerShortcuts = []; _pickerProjects = []; }
+
+      // Render first to create dp-content DOM element
+      render();
+
+      // Then load home directory contents
+      await browseTo('');
+    }
+
+    async function browseTo(path) {
+      try {
+        const data = await api('/browse?path=' + encodeURIComponent(path));
+        if (data.error) { toast(data.error, 'err'); return; }
+        _pickerCwd = data.current;
+        _pickerDirs = data.dirs || [];
+        _pickerParent = data.parent;
+        renderPicker();
+      } catch (e) { toast('Erreur navigation: ' + e.message, 'err'); }
+    }
+
+    function renderPicker() {
+      const el = document.getElementById('dp-content');
+      if (!el) return;
+
+      // Breadcrumb
+      const parts = _pickerCwd.split('/').filter(Boolean);
+      let breadcrumb = `<button onclick="browseTo('/')">/</button>`;
+      let accumulated = '';
+      for (const part of parts) {
+        accumulated += '/' + part;
+        const p = accumulated;
+        breadcrumb += `<span class="sep">/</span><button onclick="browseTo('${p.replace(/'/g, "\\'")}')"> ${part}</button>`;
+      }
+
+      // Directory list
+      let dirHtml = '';
+      if (_pickerDirs.length === 0) {
+        dirHtml = '<div class="dp-empty">Aucun sous-dossier</div>';
+      } else {
+        dirHtml = _pickerDirs.map(d => `
+          <div class="dp-dir" onclick="browseTo('${d.path.replace(/'/g, "\\'")}')">
+            ${icons.folder}
+            <span>${d.name}</span>
+            ${d.has_children ? `<span class="dp-arrow">${icons.arrowRight}</span>` : ''}
+          </div>
+        `).join('');
+      }
+
+      el.innerHTML = `
+        <div class="dp-shortcuts">
+          ${_pickerShortcuts.map(s => `
+            <button onclick="browseTo('${s.path.replace(/'/g, "\\'")}')">
+              ${s.name === 'rony' || s.path.endsWith(String.fromCharCode(47)) ? icons.home : icons.folder}
+              ${s.name === 'rony' ? '~' : s.name}
+            </button>
+          `).join('')}
+        </div>
+        ${_pickerProjects.length > 0 ? `
+        <div style="margin-bottom:10px">
+          <div style="font-size:10px;font-weight:600;color:var(--td);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Projets Git</div>
+          <div class="dp-shortcuts">
+            ${_pickerProjects.map(p => `
+              <button onclick="browseTo('${p.path.replace(/'/g, "\\'")}')">
+                ${icons.code}
+                ${p.name}
+                <span class="git-badge">git</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>` : ''}
+        <div class="dp-breadcrumb">${breadcrumb}</div>
+        <div class="dp-dirlist">
+          ${_pickerParent ? `
+            <div class="dp-dir" onclick="browseTo('${_pickerParent.replace(/'/g, "\\'")}')">
+              ${icons.arrowRight}
+              <span style="color:var(--td)">..</span>
+            </div>` : ''}
+          ${dirHtml}
+        </div>
+        <div class="dp-current">${icons.folder} ${_pickerCwd}</div>
+      `;
+    }
+
+    function confirmDirPicker() {
+      const action = _pickerAction;
+      const cwd = _pickerCwd;
+      _pickerVisible = false;
+      modal = null;
+      _pickerAction = null;
+      render();
+
+      if (action.type === 'launch') {
+        _doLaunchTerminal(action.id, action.name, cwd);
+      } else if (action.type === 'login') {
+        _doLaunchLogin(action.id, action.name, cwd);
+      }
+    }
+
+    function closePicker() {
+      _pickerVisible = false;
+      modal = null;
+      _pickerAction = null;
+      render();
+    }
+
+    function closeTerminal() {
+      document.getElementById('term-overlay').classList.remove('on');
+      const badge = document.getElementById('term-login-badge');
+      badge.style.display = 'none';
+      if (_socket) { _socket.emit('stop_terminal'); _socket.disconnect(); _socket = null; }
+      if (_term) {
+        if (_term._resizeObserver) _term._resizeObserver.disconnect();
+        _term.dispose(); _term = null;
+      }
+      _fitAddon = null;
+      _loginMode = false;
+      _loginAccountId = null;
+    }
+
+    async function copyCmd(id) {
+      const r = await api(`/accounts/${id}/launch`, { method: 'POST' });
+      if (r.error) return toast(r.error, 'err');
+      await navigator.clipboard.writeText(r.command); toast('Commande copiee');
+    }
+
+    async function exportAcc() {
+      const d = await api('/export');
+      const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+      const u = URL.createObjectURL(b);
+      const a = document.createElement('a'); a.href = u; a.download = 'claude-accounts.json'; a.click();
+      URL.revokeObjectURL(u); toast('Export telecharge');
+    }
+
+    async function importAcc() {
+      const i = document.createElement('input'); i.type = 'file'; i.accept = '.json';
+      i.onchange = async e => {
+        const f = e.target.files[0]; if (!f) return;
+        const t = await f.text();
+        try {
+          const d = JSON.parse(t);
+          const r = await api('/import', { method: 'POST', body: d });
+          toast(`${r.imported} importe(s)`); await load(); await loadAliases();
+        } catch { toast('Fichier invalide', 'err'); }
+      };
+      i.click();
+    }
+
+    async function dlScript() {
+      await loadAliases();
+      const b = new Blob([aliasScript], { type: 'text/x-sh' });
+      const u = URL.createObjectURL(b);
+      const a = document.createElement('a'); a.href = u; a.download = 'claude-aliases.sh'; a.click();
+      URL.revokeObjectURL(u); toast('Script telecharge');
+    }
+
+    async function cpScript() {
+      await loadAliases();
+      await navigator.clipboard.writeText(aliasScript);
+      toast('Script copie');
+    }
+
+    // ── Helpers ──
+    function getStatusClass(a) {
+      if (a.auth_type === 'api_key') return a.masked_key ? 'status-ok' : 'status-err';
+      if (!a.masked_key) return 'status-warn';
+      if (a.token_status === 'expired') return 'status-err';
+      if (a.token_status === 'valid') return 'status-ok';
+      return 'status-ok';
+    }
+
+    function getAttentionCount() {
+      return accounts.filter(a => {
+        if (a.auth_type === 'oauth') {
+          if (!a.masked_key) return true;
+          if (a.token_status === 'expired') return true;
+        }
+        if (a.auth_type === 'api_key' && !a.masked_key) return true;
+        return false;
+      }).length;
+    }
+
+    function filterAccounts() {
+      if (!searchQuery) return accounts;
+      const q = searchQuery.toLowerCase();
+      return accounts.filter(a => a.name.includes(q) || a.auth_type.includes(q));
+    }
+
+    // ── Render ──
+    function render() {
+      const el = document.getElementById('app');
+      const apiN = accounts.filter(a => a.auth_type === 'api_key').length;
+      const oauthN = accounts.filter(a => a.auth_type === 'oauth').length;
+      const attentionN = getAttentionCount();
+      const healthyN = accounts.length - attentionN;
+      const filtered = filterAccounts();
+
+      el.innerHTML = `
     <!-- Header -->
     <header class="hd">
       <div class="hd-top">
@@ -869,15 +2206,15 @@ function render() {
     <!-- Account List -->
     ${filtered.length === 0 ? `<div class="no-results">Aucun compte ne correspond a "${searchQuery}"</div>` : `
     <div class="accs">${filtered.map((a, i) => {
-      const statusClass = getStatusClass(a);
-      let statusTag = '';
-      if (a.auth_type === 'oauth') {
-        if (!a.masked_key) statusTag = `<span class="tag tag-warn">${icons.zap} LOGIN</span>`;
-        else if (a.token_status === 'expired') statusTag = `<span class="tag tag-exp">${icons.alertTriangle} EXPIRE</span>`;
-        else if (a.token_status === 'valid') statusTag = `<span class="tag tag-ok">${icons.check} ${a.expires_in_min ? Math.floor(a.expires_in_min / 60) + 'h' : ''}</span>`;
-        else statusTag = `<span class="tag tag-ok">${icons.check}</span>`;
-      }
-      return `<div class="acc-row ${statusClass}">
+        const statusClass = getStatusClass(a);
+        let statusTag = '';
+        if (a.auth_type === 'oauth') {
+          if (!a.masked_key) statusTag = `<span class="tag tag-warn">${icons.zap} LOGIN</span>`;
+          else if (a.token_status === 'expired') statusTag = `<span class="tag tag-exp">${icons.alertTriangle} EXPIRE</span>`;
+          else if (a.token_status === 'valid') statusTag = `<span class="tag tag-ok">${icons.check} ${a.expires_in_min ? Math.floor(a.expires_in_min / 60) + 'h' : ''}</span>`;
+          else statusTag = `<span class="tag tag-ok">${icons.check}</span>`;
+        }
+        return `<div class="acc-row ${statusClass}">
         <div class="av" style="background:${COLORS[i % COLORS.length]}">${a.name.slice(0, 2)}</div>
         <div class="acc-body">
           <div class="acc-name-row">
@@ -893,9 +2230,10 @@ function render() {
           </div>
         </div>
         <div class="row-actions">
-          <button class="btn btn-sm btn-green" onclick="launchTerminal('${a.id}','${a.name}')" title="Lancer dans le terminal" aria-label="Lancer Claude">${icons.terminal} Lancer</button>
+          ${a.auth_type === 'oauth' && (!a.masked_key || a.token_status === 'expired') ? `<button class="btn btn-sm btn-primary" onclick="launchLogin('${a.id}','${a.name}')" title="Lancer le login OAuth" aria-label="Login OAuth">${icons.globe} Login</button>` : `<button class="btn btn-sm btn-green" onclick="launchTerminal('${a.id}','${a.name}')" title="Lancer dans le terminal" aria-label="Lancer Claude">${icons.terminal} Lancer</button>`}
           <button class="btn btn-sm btn-copy" onclick="copyCmd('${a.id}')" title="Copier la commande" aria-label="Copier la commande de lancement">${icons.copy} Copier</button>
           <div class="ib-group">
+            ${a.auth_type === 'oauth' && a.masked_key ? `<button class="btn btn-sm" onclick="launchLogin('${a.id}','${a.name}')" title="Re-login OAuth" aria-label="Re-login OAuth" style="font-size:10px">${icons.globe} Login</button>` : ''}
             ${a.auth_type === 'oauth' && a.has_refresh ? `<button class="ib ref" data-ref="${a.id}" onclick="refreshOAuth('${a.id}')" title="Rafraîchir le token OAuth" aria-label="Rafraîchir le token OAuth">${icons.refreshCw}</button>` : ''}
             ${a.auth_type === 'oauth' ? `<button class="ib cap" onclick="captureOAuth('${a.id}')" title="Capturer tokens OAuth" aria-label="Capturer tokens OAuth">${icons.download}</button>` : ''}
             <button class="ib" onclick="openEdit('${a.id}')" title="Modifier" aria-label="Modifier le compte">${icons.edit}</button>
@@ -903,7 +2241,7 @@ function render() {
           </div>
         </div>
       </div>`;
-    }).join('')}</div>`}
+      }).join('')}</div>`}
     `}
 
     ${accounts.length > 0 ? `
@@ -966,11 +2304,10 @@ function render() {
           </div>
           <div id="f-oauth" style="display:${authType === 'oauth' ? 'block' : 'none'}">
             <div class="info-box" style="margin-bottom:14px">
-              <strong>Flow OAuth :</strong><br>
-              1. Cree le compte ici<br>
-              2. Lance <code>claude auth login</code> dans ton terminal<br>
-              3. Clique le bouton <strong style="color:var(--grn)">Capture</strong> sur le compte<br>
-              4. Les tokens sont lus depuis <code>~/.claude/.credentials.json</code> et stockes chiffres<br><br>
+              <strong>Flow OAuth simplifié :</strong><br>
+              1. Crée le compte et clique <strong style="color:var(--acc)">Créer & Login</strong><br>
+              2. Claude s'ouvre dans le terminal intégré et lance le flow d'auth<br>
+              3. Les tokens sont capturés <strong style="color:var(--grn)">automatiquement</strong><br><br>
               Ou colle les tokens manuellement :
             </div>
             <div class="fg"><label class="fl" for="f-at">Access Token (optionnel)</label><input class="fi" id="f-at" type="password" placeholder="sk-ant-oat01-..." autocomplete="off" /></div>
@@ -980,7 +2317,25 @@ function render() {
         </div>
         <div class="md-footer">
           <button class="btn" onclick="closeModal()">Annuler</button>
-          <button class="btn btn-primary" onclick="${modal === 'edit' ? 'updateAccount()' : 'addAccount()'}">${modal === 'edit' ? 'Sauvegarder' : 'Ajouter le compte'}</button>
+          ${modal !== 'edit' && authType === 'oauth' ? `<button class="btn btn-primary" onclick="addAccountAndLogin()">${icons.globe} Créer & Login</button>` : ''}
+          <button class="btn ${modal !== 'edit' && authType === 'oauth' ? '' : 'btn-primary'}" onclick="${modal === 'edit' ? 'updateAccount()' : 'addAccount()'}">${modal === 'edit' ? 'Sauvegarder' : (authType === 'oauth' ? 'Créer sans login' : 'Ajouter le compte')}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Directory Picker Modal -->
+    <div class="overlay ${modal === 'picker' ? 'on' : ''}" onclick="closeOverlay(event)" role="dialog" aria-modal="true" aria-label="Choisir le dossier">
+      <div class="modal" style="width:560px">
+        <div class="md-h">
+          <h2>${icons.folder} Choisir le dossier</h2>
+          <button class="md-close" onclick="closePicker()" aria-label="Fermer">${icons.x}</button>
+        </div>
+        <div class="md-body" id="dp-content">
+          <div style="text-align:center;padding:20px;color:var(--td)">Chargement...</div>
+        </div>
+        <div class="md-footer">
+          <button class="btn" onclick="closePicker()">Annuler</button>
+          <button class="btn btn-primary" onclick="confirmDirPicker()">${_pickerAction ? (_pickerAction.type === 'login' ? icons.globe + ' Login ici' : icons.terminal + ' Lancer ici') : 'OK'}</button>
         </div>
       </div>
     </div>
@@ -1011,67 +2366,69 @@ function render() {
     </div>` : ''}
   `;
 
-  if (accounts.length > 0 && terminalOpen) updTerm();
-}
+      if (accounts.length > 0 && terminalOpen) updTerm();
+    }
 
-async function updTerm() {
-  await loadAliases();
-  const e = document.getElementById('tp');
-  if (!e) return;
-  e.innerHTML = aliasScript
-    .replace(/^(#.*)$/gm, '<span class="c">$1</span>')
-    .replace(/^(alias)/gm, '<span class="p">$1</span>')
-    .replace(/(claude-[a-z0-9-]+)/g, '<span class="k">$1</span>')
-    .replace(/(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)/g, '<span class="v">$1</span>');
-}
+    async function updTerm() {
+      await loadAliases();
+      const e = document.getElementById('tp');
+      if (!e) return;
+      e.innerHTML = aliasScript
+        .replace(/^(#.*)$/gm, '<span class="c">$1</span>')
+        .replace(/^(alias)/gm, '<span class="p">$1</span>')
+        .replace(/(claude-[a-z0-9-]+)/g, '<span class="k">$1</span>')
+        .replace(/(ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN)/g, '<span class="v">$1</span>');
+    }
 
-function toggleTerminal() {
-  terminalOpen = !terminalOpen;
-  render();
-  if (terminalOpen) updTerm();
-}
+    function toggleTerminal() {
+      terminalOpen = !terminalOpen;
+      render();
+      if (terminalOpen) updTerm();
+    }
 
-function setAuth(t) {
-  authType = t;
-  document.querySelectorAll('.auth-opt').forEach(c => c.classList.remove('on'));
-  document.querySelectorAll('.auth-opt')[t === 'api_key' ? 0 : 1].classList.add('on');
-  const ak = document.getElementById('f-apikey'), oa = document.getElementById('f-oauth');
-  if (ak) ak.style.display = t === 'api_key' ? 'block' : 'none';
-  if (oa) oa.style.display = t === 'oauth' ? 'block' : 'none';
-}
+    function setAuth(t) {
+      const nameVal = document.getElementById('f-name')?.value || '';
+      authType = t;
+      render();
+      setTimeout(() => {
+        const nameInput = document.getElementById('f-name');
+        if (nameInput) nameInput.value = nameVal;
+      }, 20);
+    }
 
-function openAdd() { modal = 'add'; editId = null; authType = 'api_key'; render(); setTimeout(() => document.getElementById('f-name')?.focus(), 80); }
-function openEdit(id) {
-  const a = accounts.find(x => x.id === id); if (!a) return;
-  modal = 'edit'; editId = id; authType = a.auth_type; render();
-  setTimeout(() => { document.getElementById('f-name').value = a.name; setAuth(a.auth_type); }, 80);
-}
-function openDel(id) { deleteId = id; modal = 'delete'; render(); }
-function closeModal() { modal = null; editId = null; deleteId = null; render(); }
-function closeOverlay(e) { if (e.target.classList.contains('overlay')) closeModal(); }
+    function openAdd() { modal = 'add'; editId = null; authType = 'api_key'; render(); setTimeout(() => document.getElementById('f-name')?.focus(), 80); }
+    function openEdit(id) {
+      const a = accounts.find(x => x.id === id); if (!a) return;
+      modal = 'edit'; editId = id; authType = a.auth_type; render();
+      setTimeout(() => { document.getElementById('f-name').value = a.name; setAuth(a.auth_type); }, 80);
+    }
+    function openDel(id) { deleteId = id; modal = 'delete'; render(); }
+    function closeModal() { modal = null; editId = null; deleteId = null; render(); }
+    function closeOverlay(e) { if (e.target.classList.contains('overlay')) closeModal(); }
 
-// ── Keyboard Shortcuts ──
-document.addEventListener('keydown', e => {
-  // Terminal overlay captures all keys except Ctrl+Shift+T to close
-  if (document.getElementById('term-overlay').classList.contains('on')) {
-    if (e.key === 'Escape' && e.ctrlKey) closeTerminal();
-    return;
-  }
-  if (modal) {
-    if (e.key === 'Escape') closeModal();
-    return;
-  }
-  // Don't trigger shortcuts when typing in inputs
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-    if (e.key === 'Escape') { e.target.blur(); }
-    return;
-  }
-  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openAdd(); }
-  if (e.key === '/') { e.preventDefault(); document.getElementById('search-input')?.focus(); }
-});
+    // ── Keyboard Shortcuts ──
+    document.addEventListener('keydown', e => {
+      // Terminal overlay captures all keys except Ctrl+Shift+T to close
+      if (document.getElementById('term-overlay').classList.contains('on')) {
+        if (e.key === 'Escape' && e.ctrlKey) closeTerminal();
+        return;
+      }
+      if (modal) {
+        if (e.key === 'Escape') closeModal();
+        return;
+      }
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        if (e.key === 'Escape') { e.target.blur(); }
+        return;
+      }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openAdd(); }
+      if (e.key === '/') { e.preventDefault(); document.getElementById('search-input')?.focus(); }
+    });
 
-// ── Init ──
-load();
-</script>
+    // ── Init ──
+    load();
+  </script>
 </body>
+
 </html>

@@ -14,6 +14,7 @@ import struct
 import fcntl
 import termios
 import threading
+import glob
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit
@@ -238,6 +239,84 @@ def api_import():
     return jsonify({"imported": count})
 
 
+# ── Directory browse ──────────────────────────────────────────────────────
+
+@app.route("/api/browse", methods=["GET"])
+def api_browse():
+    """List directories for the directory picker. ?path= to browse."""
+    raw = request.args.get("path", "")
+    base = os.path.expanduser(raw) if raw else str(Path.home())
+    base = os.path.abspath(base)
+
+    if not os.path.isdir(base):
+        return jsonify({"error": f"Not a directory: {base}"}), 400
+
+    dirs = []
+    try:
+        for entry in sorted(os.scandir(base), key=lambda e: e.name.lower()):
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                has_children = False
+                try:
+                    has_children = any(
+                        e.is_dir(follow_symlinks=False)
+                        for e in os.scandir(entry.path)
+                        if not e.name.startswith(".")
+                    )
+                except PermissionError:
+                    pass
+                dirs.append({
+                    "name": entry.name,
+                    "path": entry.path,
+                    "has_children": has_children,
+                })
+    except PermissionError:
+        return jsonify({"error": f"Permission denied: {base}"}), 403
+
+    # Detect parent directory
+    parent = os.path.dirname(base) if base != "/" else None
+
+    return jsonify({
+        "current": base,
+        "parent": parent,
+        "dirs": dirs,
+    })
+
+
+@app.route("/api/recent-dirs", methods=["GET"])
+def api_recent_dirs():
+    """Return common project directories (home, Projets, Desktop, etc.)."""
+    home = str(Path.home())
+    candidates = [
+        home,
+        os.path.join(home, "Projets"),
+        os.path.join(home, "Projects"),
+        os.path.join(home, "projects"),
+        os.path.join(home, "Bureau"),
+        os.path.join(home, "Desktop"),
+        os.path.join(home, "Documents"),
+        os.path.join(home, "dev"),
+        os.path.join(home, "src"),
+        os.path.join(home, "work"),
+    ]
+    shortcuts = []
+    for p in candidates:
+        if os.path.isdir(p):
+            shortcuts.append({"name": os.path.basename(p) or "~", "path": p})
+
+    # Find git repos in common locations (1 level deep)
+    git_dirs = []
+    for base in [os.path.join(home, d) for d in ["Projets", "Projects", "projects", "dev", "src", "work"]]:
+        if os.path.isdir(base):
+            for entry in os.scandir(base):
+                if entry.is_dir(follow_symlinks=False):
+                    if os.path.isdir(os.path.join(entry.path, ".git")):
+                        git_dirs.append({"name": f"{os.path.basename(base)}/{entry.name}", "path": entry.path})
+
+    return jsonify({"shortcuts": shortcuts, "projects": git_dirs[:20]})
+
+
 # ── Terminal WebSocket ────────────────────────────────────────────────────
 
 def _cleanup_terminal(sid):
@@ -279,9 +358,15 @@ def handle_start_terminal(data):
         env.pop("ANTHROPIC_API_KEY", None)
     env.setdefault("TERM", "xterm-256color")
 
+    # Working directory
+    cwd = data.get("cwd", "") or str(Path.home())
+    if not os.path.isdir(cwd):
+        cwd = str(Path.home())
+
     pid, fd = pty.fork()
     if pid == 0:
-        # Child — exec claude
+        # Child — change directory then exec claude
+        os.chdir(cwd)
         os.execvpe("claude", ["claude"], env)
     else:
         # Parent — track and relay
@@ -308,6 +393,97 @@ def handle_start_terminal(data):
 
         t = threading.Thread(target=_read_loop, daemon=True)
         t.start()
+
+
+@socketio.on("start_login")
+def handle_start_login(data):
+    """
+    Launch 'claude' without credentials so OAuth login flow triggers.
+    Monitor ~/.claude/.credentials.json and auto-capture tokens once
+    the user completes authentication.
+    """
+    from flask import request as freq
+    import time as _time
+
+    sid = freq.sid
+    _cleanup_terminal(sid)
+
+    account_id = data.get("account_id", "")
+    acc = db.get_account(account_id)
+    if not acc:
+        emit("terminal_error", {"error": f"Compte {account_id} introuvable"})
+        return
+
+    # Clean env — strip any existing Claude credentials so auth flow triggers
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env.setdefault("TERM", "xterm-256color")
+
+    # Working directory
+    cwd = data.get("cwd", "") or str(Path.home())
+    if not os.path.isdir(cwd):
+        cwd = str(Path.home())
+
+    # Snapshot the credentials file mtime before launching
+    cred_path = Path.home() / ".claude" / ".credentials.json"
+    initial_mtime = cred_path.stat().st_mtime if cred_path.exists() else 0
+
+    pid, fd = pty.fork()
+    if pid == 0:
+        # Child — change directory then exec claude (no credentials → forces auth)
+        os.chdir(cwd)
+        os.execvpe("claude", ["claude"], env)
+    else:
+        _terminals[sid] = {"fd": fd, "pid": pid, "login_account": account_id}
+        emit("terminal_started")
+
+        def _read_loop():
+            while sid in _terminals:
+                try:
+                    r, _, _ = select.select([fd], [], [], 0.1)
+                    if r:
+                        chunk = os.read(fd, 4096)
+                        if chunk:
+                            socketio.emit(
+                                "terminal_output",
+                                {"data": chunk.decode("utf-8", errors="replace")},
+                                room=sid,
+                            )
+                        else:
+                            break
+                except (OSError, IOError):
+                    break
+            socketio.emit("terminal_exit", room=sid)
+
+        def _watch_credentials():
+            """Poll .credentials.json for new/updated tokens."""
+            mtime_ref = initial_mtime
+            while sid in _terminals:
+                try:
+                    if cred_path.exists():
+                        cur = cred_path.stat().st_mtime
+                        if cur > mtime_ref:
+                            _time.sleep(0.5)  # let claude finish writing
+                            try:
+                                result = db.capture_oauth_tokens(account_id)
+                                socketio.emit("login_complete", {
+                                    "account_id": account_id,
+                                    "token_preview": result["token_preview"],
+                                    "has_refresh": result["has_refresh"],
+                                    "expires_in_min": result["expires_in_min"],
+                                }, room=sid)
+                                return  # tokens captured
+                            except Exception:
+                                mtime_ref = cur
+                except (OSError, IOError):
+                    pass
+                _time.sleep(2)
+
+        t1 = threading.Thread(target=_read_loop, daemon=True)
+        t2 = threading.Thread(target=_watch_credentials, daemon=True)
+        t1.start()
+        t2.start()
 
 
 @socketio.on("terminal_input")
