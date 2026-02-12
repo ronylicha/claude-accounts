@@ -53,11 +53,14 @@ Before:                              After:
 - **CLI** -- Full-featured command-line interface
 - **Export/Import** -- Backup and restore your accounts as JSON
 - **Token monitoring** -- Track OAuth expiration, get alerts when tokens need refresh
+- **Authentication** -- Password-protected dashboard with session cookies and API token support
+- **Docker** -- Dockerfile + docker-compose.yml for one-command deployment
+- **Auto-launch** -- Browser opens automatically when starting the server
 
 ## Installation
 
 ```bash
-git clone https://github.com/ronyk/claude-accounts.git
+git clone git@github.com:ronylicha/claude-accounts.git
 cd claude-accounts
 python3 -m venv venv
 source venv/bin/activate
@@ -109,7 +112,7 @@ That's it. Same `~/.claude`, same config, different credentials.
 | `install` | Install aliases into `.bashrc` / `.zshrc` |
 | `export` | Export all accounts as JSON |
 | `import <file>` | Import accounts from JSON file |
-| `serve` | Start the web dashboard (with WebSocket terminal support) |
+| `serve [--remote] [--no-browser]` | Start the web dashboard (auth required, auto-opens browser) |
 
 ### OAuth Accounts
 
@@ -173,12 +176,15 @@ claude-client              # launches with client credentials
 ## Web Dashboard
 
 ```bash
-python cli.py serve --port 5111
-# or
-python server.py
+python cli.py serve                    # starts + opens browser
+python cli.py serve --remote           # bind 0.0.0.0 for remote access
+python cli.py serve --no-browser       # don't auto-open browser
+python cli.py serve --port 8080        # custom port
 ```
 
 Open http://localhost:5111
+
+On first visit, you'll be asked to create a password. An API token is generated for programmatic access (shown once — save it).
 
 <p align="center">
   <img src="assets/dashboard-preview.png" alt="Dashboard" width="700" />
@@ -186,6 +192,7 @@ Open http://localhost:5111
 
 The dashboard provides:
 
+- **Authentication** -- Password-protected access with session cookies (7 days) and API token
 - **Health monitoring** -- See which accounts are active, expired, or need login
 - **One-click actions** -- Copy launch commands, capture OAuth tokens, refresh tokens
 - **Web terminal** -- Launch Claude directly in the browser (xterm.js + WebSocket)
@@ -239,13 +246,25 @@ When a token expires:
 | **API response** | Credentials are masked in list endpoints |
 | **Export** | `/api/export` returns decrypted data -- handle with care |
 | **Aliases** | Contain credentials in plaintext (same security as `.bashrc` env vars) |
+| **Auth password** | Hashed with werkzeug pbkdf2, never stored in plaintext |
+| **API token** | SHA-256 hashed in database, shown only once at setup |
+| **Session** | HttpOnly cookie, SameSite=Lax, 7-day expiry |
+| **Rate limiting** | Login limited to 10 attempts per 15 minutes per IP |
+| **WebSocket** | Authenticated via session cookie or API token |
 
 Credentials are never stored in plaintext on disk except in Claude's own `.credentials.json` (which the CLI reads from, not writes to).
+
+> **Remote access:** When using `--remote`, the server binds to `0.0.0.0`. Use an SSH tunnel or HTTPS reverse proxy for security. Never expose the plain HTTP port to the internet.
 
 ## API Endpoints
 
 | Method | Route | Description |
 |--------|-------|-------------|
+| `GET` | `/api/auth/status` | Check auth state (public) |
+| `POST` | `/api/auth/setup` | Create admin password + get API token (public, one-time) |
+| `POST` | `/api/auth/login` | Login with password (public) |
+| `POST` | `/api/auth/logout` | Logout (clears session) |
+| `POST` | `/api/auth/change-password` | Change password |
 | `GET` | `/api/accounts` | List accounts (credentials masked) |
 | `POST` | `/api/accounts` | Add an account |
 | `PUT` | `/api/accounts/:id` | Update an account |
@@ -258,6 +277,8 @@ Credentials are never stored in plaintext on disk except in Claude's own `.crede
 | `POST` | `/api/install-aliases` | Install aliases into shell |
 | `GET` | `/api/export` | Export all accounts (decrypted) |
 | `POST` | `/api/import` | Import accounts from JSON array |
+
+> All API endpoints except `/api/auth/status`, `/api/auth/login`, and `/api/auth/setup` require authentication via session cookie or `X-Auth-Token` header.
 
 ### WebSocket Events (Terminal)
 
@@ -272,6 +293,25 @@ Credentials are never stored in plaintext on disk except in Claude's own `.crede
 | `terminal_error` | Server → Client | Error message `{error}` |
 | `stop_terminal` | Client → Server | Kill the terminal process |
 
+## Docker
+
+```bash
+# Quick start (build + run + open browser)
+./start.sh
+
+# Or manually
+docker compose up -d --build
+# Open http://localhost:5111
+
+# Logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+Data is persisted in `~/.claude-accounts` and `~/.claude` via Docker volumes.
+
 ## Project Structure
 
 ```
@@ -281,6 +321,10 @@ claude-accounts/
   db.py               Database layer (SQLite + Fernet encryption + OAuth refresh)
   static/index.html   Web dashboard SPA (xterm.js terminal, token management)
   requirements.txt    flask, cryptography, requests, flask-socketio, simple-websocket
+  Dockerfile          Docker image (python:3.12-slim + tini)
+  docker-compose.yml  Docker orchestration with volumes
+  start.sh            Quick start script (build + run + open browser)
+  .dockerignore       Docker build exclusions
   assets/             README illustrations
 ```
 
@@ -291,7 +335,8 @@ Contributions are welcome. The codebase is intentionally simple -- three Python 
 To set up for development:
 
 ```bash
-git clone <repo-url>
+git clone git@github.com:ronylicha/claude-accounts.git
+```
 cd claude-accounts
 python3 -m venv venv
 source venv/bin/activate

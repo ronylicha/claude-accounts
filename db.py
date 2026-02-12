@@ -79,10 +79,71 @@ def init_db():
             created_at      TEXT NOT NULL DEFAULT (datetime('now')),
             last_used        TEXT
         );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     """)
     conn.commit()
     conn.close()
     os.chmod(str(DB_PATH), 0o600)
+
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+
+def is_setup_done() -> bool:
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key = 'password_hash'").fetchone()
+    conn.close()
+    return row is not None
+
+
+def setup_admin(password: str) -> str:
+    from werkzeug.security import generate_password_hash
+    import hashlib, secrets
+    if is_setup_done():
+        raise ValueError("Setup already completed")
+    pw_hash = generate_password_hash(password)
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('password_hash', ?)", (pw_hash,))
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('api_token_hash', ?)", (token_hash,))
+    conn.commit()
+    conn.close()
+    return raw_token
+
+
+def verify_password(password: str) -> bool:
+    from werkzeug.security import check_password_hash
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key = 'password_hash'").fetchone()
+    conn.close()
+    if not row:
+        return False
+    return check_password_hash(row["value"], password)
+
+
+def verify_api_token(token: str) -> bool:
+    import hashlib
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key = 'api_token_hash'").fetchone()
+    conn.close()
+    if not row:
+        return False
+    return hashlib.sha256(token.encode()).hexdigest() == row["value"]
+
+
+def change_password(old_password: str, new_password: str) -> bool:
+    from werkzeug.security import generate_password_hash
+    if not verify_password(old_password):
+        return False
+    pw_hash = generate_password_hash(new_password)
+    conn = get_db()
+    conn.execute("UPDATE settings SET value = ? WHERE key = 'password_hash'", (pw_hash,))
+    conn.commit()
+    conn.close()
+    return True
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────

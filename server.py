@@ -15,17 +15,135 @@ import fcntl
 import termios
 import threading
 import glob
+import time
+import secrets
+import webbrowser
+from datetime import timedelta
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory, Response
-from flask_socketio import SocketIO, emit
+from flask import Flask, request, jsonify, send_from_directory, Response, session
+from flask_socketio import SocketIO, emit, disconnect
 
 import db
 
+
+# ── Flask secret key (persistent) ────────────────────────────────────────────
+
+def _get_or_create_secret_key() -> str:
+    secret_path = db.DB_DIR / ".flask_secret"
+    if secret_path.exists():
+        return secret_path.read_text().strip()
+    key = secrets.token_hex(32)
+    db.DB_DIR.mkdir(parents=True, exist_ok=True)
+    secret_path.write_text(key)
+    os.chmod(str(secret_path), 0o600)
+    return key
+
+
 app = Flask(__name__, static_folder="static")
+app.secret_key = _get_or_create_secret_key()
+app.permanent_session_lifetime = timedelta(days=7)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Active terminal sessions: {sid: {fd, pid}}
 _terminals = {}
+
+# Rate limiting for login: {ip: [timestamps]}
+_login_attempts = {}
+_LOGIN_MAX = 10
+_LOGIN_WINDOW = 900  # 15 minutes
+
+
+# ── Auth middleware ───────────────────────────────────────────────────────────
+
+_PUBLIC_PATHS = {"/api/auth/status", "/api/auth/login", "/api/auth/setup"}
+
+
+@app.before_request
+def auth_guard():
+    # Static files and public auth endpoints
+    path = request.path
+    if path == "/" or not path.startswith("/api/"):
+        return None
+    if path in _PUBLIC_PATHS:
+        return None
+
+    # Check API token header
+    token = request.headers.get("X-Auth-Token", "")
+    if token and db.verify_api_token(token):
+        return None
+
+    # Check session cookie
+    if session.get("authenticated"):
+        return None
+
+    return jsonify({"error": "Authentication required"}), 401
+
+
+# ── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.route("/api/auth/status", methods=["GET"])
+def api_auth_status():
+    return jsonify({
+        "setup_done": db.is_setup_done(),
+        "authenticated": bool(session.get("authenticated")),
+    })
+
+
+@app.route("/api/auth/setup", methods=["POST"])
+def api_auth_setup():
+    d = request.json or {}
+    password = d.get("password", "")
+    if len(password) < 4:
+        return jsonify({"error": "Password too short (min 4 chars)"}), 400
+    try:
+        api_token = db.setup_admin(password)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    session.permanent = True
+    session["authenticated"] = True
+    return jsonify({"api_token": api_token}), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_auth_login():
+    ip = request.remote_addr or "unknown"
+    now = time.time()
+    # Rate limit
+    attempts = _login_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    if len(attempts) >= _LOGIN_MAX:
+        return jsonify({"error": "Too many attempts. Try again later."}), 429
+
+    d = request.json or {}
+    password = d.get("password", "")
+    if not db.verify_password(password):
+        attempts.append(now)
+        _login_attempts[ip] = attempts
+        return jsonify({"error": "Invalid password"}), 401
+
+    # Clear attempts on success
+    _login_attempts.pop(ip, None)
+    session.permanent = True
+    session["authenticated"] = True
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_auth_logout():
+    session.clear()
+    return jsonify({"status": "logged_out"})
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def api_auth_change_password():
+    d = request.json or {}
+    old = d.get("old_password", "")
+    new = d.get("new_password", "")
+    if len(new) < 4:
+        return jsonify({"error": "New password too short (min 4 chars)"}), 400
+    if not db.change_password(old, new):
+        return jsonify({"error": "Current password is incorrect"}), 401
+    return jsonify({"status": "password_changed"})
 
 
 @app.route("/api/accounts", methods=["GET"])
@@ -337,6 +455,17 @@ def _cleanup_terminal(sid):
         pass
 
 
+@socketio.on("connect")
+def handle_ws_connect():
+    """Reject unauthenticated WebSocket connections."""
+    if not session.get("authenticated"):
+        # Check API token in query string
+        token = request.args.get("token", "")
+        if not token or not db.verify_api_token(token):
+            disconnect()
+            return False
+
+
 @socketio.on("start_terminal")
 def handle_start_terminal(data):
     from flask import request as freq
@@ -535,11 +664,32 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
-if __name__ == "__main__":
+def start_server(host="127.0.0.1", port=5111, open_browser=True):
     db.init_db()
-    port = int(os.environ.get("PORT", 5111))
-    print(f"\n  🔶 Claude Accounts Manager")
-    print(f"  → http://localhost:{port}")
-    print(f"  → DB: {db.DB_PATH}")
-    print(f"  → Single shared .claude dir — credentials injected via env vars\n")
-    socketio.run(app, host="127.0.0.1", port=port, debug=True, allow_unsafe_werkzeug=True)
+    url = f"http://{'localhost' if host == '127.0.0.1' else host}:{port}"
+    print(f"\n  Claude Accounts Manager")
+    print(f"  -> {url}")
+    print(f"  -> DB: {db.DB_PATH}")
+    if host != "127.0.0.1":
+        print(f"  -> WARNING: Listening on {host} — use HTTPS/SSH tunnel for remote access")
+    print(f"  -> Auth: {'configured' if db.is_setup_done() else 'setup required (first visit)'}")
+    print()
+
+    if open_browser and not os.environ.get("DOCKER_CONTAINER"):
+        def _open():
+            time.sleep(1.2)
+            webbrowser.open(url)
+        threading.Thread(target=_open, daemon=True).start()
+
+    socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--remote", action="store_true", help="Bind to 0.0.0.0")
+    parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
+    parser.add_argument("--port", "-p", type=int, default=int(os.environ.get("PORT", 5111)))
+    args = parser.parse_args()
+    host = "0.0.0.0" if args.remote else "127.0.0.1"
+    start_server(host=host, port=args.port, open_browser=not args.no_browser)

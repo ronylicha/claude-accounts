@@ -1588,6 +1588,147 @@
         justify-content: flex-end;
       }
     }
+
+    /* ── Auth Pages ── */
+    .auth-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .auth-card {
+      background: var(--bg1);
+      border: 1px solid var(--brd);
+      border-radius: var(--r-lg);
+      padding: 36px 32px;
+      width: 400px;
+      max-width: 100%;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    }
+
+    .auth-card .auth-logo {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      background: var(--acc-s);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      color: var(--acc);
+    }
+
+    .auth-card .auth-logo svg {
+      width: 26px;
+      height: 26px;
+    }
+
+    .auth-card h2 {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--th);
+      margin-bottom: 6px;
+    }
+
+    .auth-card .auth-sub {
+      text-align: center;
+      font-size: 13px;
+      color: var(--td);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .auth-card .fg {
+      margin-bottom: 16px;
+    }
+
+    .auth-card .auth-btn {
+      width: 100%;
+      padding: 11px;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .auth-card .auth-error {
+      background: var(--red-s);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: var(--red);
+      padding: 8px 12px;
+      border-radius: var(--r-sm);
+      font-size: 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+
+    .auth-card .auth-error.visible {
+      display: block;
+    }
+
+    .auth-card .token-display {
+      background: var(--bg3);
+      border: 1px solid var(--grn-b);
+      border-radius: var(--r);
+      padding: 14px;
+      margin-top: 16px;
+    }
+
+    .auth-card .token-display label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--grn);
+      margin-bottom: 6px;
+    }
+
+    .auth-card .token-display code {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--tb);
+      word-break: break-all;
+      line-height: 1.6;
+    }
+
+    .auth-card .token-display .token-warn {
+      font-size: 10px;
+      color: var(--ylw);
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    .btn-logout {
+      background: transparent;
+      border: 1px solid var(--brd);
+      border-radius: 7px;
+      color: var(--td);
+      cursor: pointer;
+      padding: 6px 10px;
+      font-family: var(--ui);
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+
+    .btn-logout:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: var(--red-s);
+    }
+
+    .btn-logout svg {
+      width: 12px;
+      height: 12px;
+    }
   </style>
 </head>
 
@@ -1660,7 +1801,13 @@
       arrowRight: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>',
       activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
       refreshCw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+      logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     };
+
+    // ── Auth state ──
+    let _authSetupDone = false;
+    let _authenticated = false;
+    let _setupToken = null; // shown once after setup
 
     // ── API ──
     async function api(p, o = {}) {
@@ -1669,6 +1816,11 @@
         ...o,
         body: o.body ? JSON.stringify(o.body) : undefined
       });
+      if (r.status === 401 && !p.startsWith('/auth/')) {
+        _authenticated = false;
+        renderAuth();
+        return { error: 'Session expired' };
+      }
       return r.json();
     }
 
@@ -2113,6 +2265,7 @@
       <div class="hd-top">
         <div class="hd-logo">${icons.users}</div>
         <h1>Claude Accounts</h1>
+        <div style="margin-left:auto"><button class="btn-logout" onclick="doLogout()">${icons.logout} Logout</button></div>
       </div>
       <div class="hd-desc">
         Un seul <code>~/.claude</code> partage &middot; Credentials chiffres dans SQLite &middot; Injectes via env vars
@@ -2426,8 +2579,130 @@
       if (e.key === '/') { e.preventDefault(); document.getElementById('search-input')?.focus(); }
     });
 
+    // ── Auth UI ──
+    async function checkAuth() {
+      try {
+        const r = await fetch(API + '/auth/status');
+        const data = await r.json();
+        _authSetupDone = data.setup_done;
+        _authenticated = data.authenticated;
+      } catch {
+        _authSetupDone = false;
+        _authenticated = false;
+      }
+      if (_authenticated) {
+        load();
+      } else {
+        renderAuth();
+      }
+    }
+
+    function renderAuth() {
+      const el = document.getElementById('app');
+      if (!_authSetupDone) {
+        // Setup page
+        el.innerHTML = `
+          <div class="auth-page">
+            <div class="auth-card">
+              <div class="auth-logo">${icons.shield}</div>
+              <h2>Setup</h2>
+              <div class="auth-sub">Create a password to protect your Claude Accounts Manager.</div>
+              <div class="auth-error" id="auth-err"></div>
+              ${_setupToken ? `
+                <div class="token-display">
+                  <label>API Token (save it now!)</label>
+                  <code id="token-val">${_setupToken}</code>
+                  <div class="token-warn">This token will not be shown again. Use it as X-Auth-Token header for API access.</div>
+                  <button class="btn btn-sm" style="margin-top:10px" onclick="navigator.clipboard.writeText('${_setupToken}');toast('Token copied')">${icons.copy} Copy</button>
+                </div>
+                <button class="btn btn-primary auth-btn" style="margin-top:16px" onclick="_setupToken=null;_authenticated=true;load()">Continue to Dashboard</button>
+              ` : `
+                <div class="fg">
+                  <label class="fl" for="setup-pw">Password</label>
+                  <input class="fi" id="setup-pw" type="password" placeholder="Choose a password (min 4 chars)" autocomplete="new-password" />
+                </div>
+                <div class="fg">
+                  <label class="fl" for="setup-pw2">Confirm password</label>
+                  <input class="fi" id="setup-pw2" type="password" placeholder="Confirm password" autocomplete="new-password" />
+                </div>
+                <button class="btn btn-primary auth-btn" onclick="doSetup()">${icons.lock} Create Password</button>
+              `}
+            </div>
+          </div>
+        `;
+        if (!_setupToken) {
+          setTimeout(() => document.getElementById('setup-pw')?.focus(), 80);
+          const pw2 = document.getElementById('setup-pw2');
+          if (pw2) pw2.addEventListener('keydown', e => { if (e.key === 'Enter') doSetup(); });
+        }
+      } else {
+        // Login page
+        el.innerHTML = `
+          <div class="auth-page">
+            <div class="auth-card">
+              <div class="auth-logo">${icons.lock}</div>
+              <h2>Login</h2>
+              <div class="auth-sub">Enter your password to access the dashboard.</div>
+              <div class="auth-error" id="auth-err"></div>
+              <div class="fg">
+                <label class="fl" for="login-pw">Password</label>
+                <input class="fi" id="login-pw" type="password" placeholder="Password" autocomplete="current-password" />
+              </div>
+              <button class="btn btn-primary auth-btn" onclick="doLogin()">${icons.lock} Login</button>
+            </div>
+          </div>
+        `;
+        setTimeout(() => document.getElementById('login-pw')?.focus(), 80);
+        document.getElementById('login-pw')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+      }
+    }
+
+    async function doSetup() {
+      const pw = document.getElementById('setup-pw')?.value || '';
+      const pw2 = document.getElementById('setup-pw2')?.value || '';
+      const errEl = document.getElementById('auth-err');
+      if (pw.length < 4) { errEl.textContent = 'Password too short (min 4 chars)'; errEl.classList.add('visible'); return; }
+      if (pw !== pw2) { errEl.textContent = 'Passwords do not match'; errEl.classList.add('visible'); return; }
+      try {
+        const r = await fetch(API + '/auth/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw })
+        });
+        const data = await r.json();
+        if (data.error) { errEl.textContent = data.error; errEl.classList.add('visible'); return; }
+        _authSetupDone = true;
+        _authenticated = true;
+        _setupToken = data.api_token;
+        renderAuth(); // re-render to show token
+      } catch (e) { errEl.textContent = 'Error: ' + e.message; errEl.classList.add('visible'); }
+    }
+
+    async function doLogin() {
+      const pw = document.getElementById('login-pw')?.value || '';
+      const errEl = document.getElementById('auth-err');
+      if (!pw) { errEl.textContent = 'Enter your password'; errEl.classList.add('visible'); return; }
+      try {
+        const r = await fetch(API + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw })
+        });
+        const data = await r.json();
+        if (data.error) { errEl.textContent = data.error; errEl.classList.add('visible'); return; }
+        _authenticated = true;
+        load();
+      } catch (e) { errEl.textContent = 'Error: ' + e.message; errEl.classList.add('visible'); }
+    }
+
+    async function doLogout() {
+      await fetch(API + '/auth/logout', { method: 'POST' });
+      _authenticated = false;
+      renderAuth();
+    }
+
     // ── Init ──
-    load();
+    checkAuth();
   </script>
 </body>
 

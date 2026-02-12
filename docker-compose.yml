@@ -1,0 +1,13 @@
+services:
+  claude-accounts:
+    build: .
+    ports:
+      - "5111:5111"
+    volumes:
+      - ~/.claude-accounts:/root/.claude-accounts
+      - ~/.claude:/root/.claude
+    environment:
+      - PORT=5111
+    tty: true
+    stdin_open: true
+    restart: unless-stopped

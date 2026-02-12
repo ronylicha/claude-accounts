@@ -315,9 +315,10 @@ def cmd_import(args):
 def cmd_serve(args):
     port = args.port or 5111
     os.environ["PORT"] = str(port)
-    from server import socketio as sio, app as flask_app
-    db.init_db()
-    sio.run(flask_app, host="127.0.0.1", port=port, debug=True, allow_unsafe_werkzeug=True)
+    from server import start_server
+    host = "0.0.0.0" if args.remote else "127.0.0.1"
+    open_browser = not args.no_browser
+    start_server(host=host, port=port, open_browser=open_browser)
 
 
 def main():
@@ -359,6 +360,8 @@ def main():
 
     s = sub.add_parser("serve", help="Lancer l'interface web")
     s.add_argument("--port", "-p", type=int, default=5111)
+    s.add_argument("--remote", action="store_true", help="Bind 0.0.0.0 (acces distant)")
+    s.add_argument("--no-browser", action="store_true", help="Ne pas ouvrir le navigateur")
 
     args = p.parse_args()
     if not args.cmd:
