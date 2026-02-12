@@ -7,6 +7,7 @@ Usage:
     claude-accounts add <name> --key <api_key>      Add API key account
     claude-accounts add <name> --oauth               Add OAuth account (empty)
     claude-accounts login <name>                     Login + capture OAuth tokens
+    claude-accounts refresh <name>                   Refresh OAuth token
     claude-accounts list                             List all accounts
     claude-accounts launch <name> [-- args...]       Launch claude with account
     claude-accounts remove <name>                    Remove account
@@ -155,6 +156,31 @@ def cmd_status(args):
     print()
 
 
+def cmd_refresh(args):
+    """Refresh an OAuth token using the stored refresh token."""
+    name = args.name.lower().strip()
+    acc = db.get_account_by_name(name)
+    if not acc:
+        print(f"✗ '{name}' introuvable")
+        sys.exit(1)
+    if acc["auth_type"] != "oauth":
+        print(f"✗ '{name}' est un compte API key, pas OAuth")
+        sys.exit(1)
+
+    print(f"\n  ⏳ Refresh du token pour '{name}'...")
+    try:
+        result = db.refresh_oauth_token(acc["id"])
+        print(f"  ✓ Token rafraîchi : {result['token_preview']}")
+        if result["expires_in_min"] is not None:
+            hours = result["expires_in_min"] // 60
+            mins = result["expires_in_min"] % 60
+            print(f"  ⏰ Expire dans : {hours}h{mins:02d}m")
+        print(f"\n  Utilise maintenant : claude-{name}")
+    except Exception as e:
+        print(f"\n✗ Erreur refresh : {e}")
+        sys.exit(1)
+
+
 def cmd_launch(args):
     acc = db.get_account_by_name(args.name)
     if not acc:
@@ -289,9 +315,9 @@ def cmd_import(args):
 def cmd_serve(args):
     port = args.port or 5111
     os.environ["PORT"] = str(port)
-    from server import app as flask_app
+    from server import socketio as sio, app as flask_app
     db.init_db()
-    flask_app.run(host="127.0.0.1", port=port, debug=True)
+    sio.run(flask_app, host="127.0.0.1", port=port, debug=True, allow_unsafe_werkzeug=True)
 
 
 def main():
@@ -312,6 +338,9 @@ def main():
     sub.add_parser("list", aliases=["ls"])
 
     s = sub.add_parser("status", help="Status d'un compte")
+    s.add_argument("name")
+
+    s = sub.add_parser("refresh", help="Rafraîchir un token OAuth")
     s.add_argument("name")
 
     s = sub.add_parser("launch", aliases=["run"], help="Lancer claude avec un compte")
@@ -339,7 +368,7 @@ def main():
     cmds = {
         "add": cmd_add, "login": cmd_login,
         "list": cmd_list, "ls": cmd_list,
-        "status": cmd_status,
+        "status": cmd_status, "refresh": cmd_refresh,
         "launch": cmd_launch, "run": cmd_launch,
         "remove": cmd_remove, "rm": cmd_remove,
         "aliases": cmd_aliases, "install": cmd_install,

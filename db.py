@@ -17,8 +17,10 @@ import sqlite3
 import os
 import json
 import time
+import tempfile
 from pathlib import Path
 from cryptography.fernet import Fernet
+import requests
 
 DB_DIR = Path.home() / ".claude-accounts"
 DB_PATH = DB_DIR / "accounts.db"
@@ -198,10 +200,26 @@ def get_launch_env(account_id: str) -> dict:
         if row["expires_at"] > 0:
             now_ms = int(time.time() * 1000)
             if now_ms > row["expires_at"]:
-                raise ValueError(
-                    f"OAuth token expired for '{row['name']}'. "
-                    f"Run: claude-accounts login {row['name']}"
-                )
+                # Auto-refresh if refresh token is available
+                if row["refresh_token_enc"]:
+                    try:
+                        result = refresh_oauth_token(account_id)
+                        access_token = _decrypt(
+                            get_db().execute(
+                                "SELECT access_token_enc FROM accounts WHERE id = ?",
+                                (account_id,)
+                            ).fetchone()["access_token_enc"]
+                        )
+                    except Exception as e:
+                        raise ValueError(
+                            f"OAuth token expired and refresh failed for '{row['name']}': {e}. "
+                            f"Run: claude-accounts login {row['name']}"
+                        )
+                else:
+                    raise ValueError(
+                        f"OAuth token expired for '{row['name']}' (no refresh token). "
+                        f"Run: claude-accounts login {row['name']}"
+                    )
 
         return {"CLAUDE_CODE_OAUTH_TOKEN": access_token}
 
@@ -283,6 +301,121 @@ def capture_oauth_tokens(account_id: str, credentials_path: str = None) -> dict:
         "has_refresh": bool(refresh_token),
         "expires_in_min": remaining,
     }
+
+
+# ── OAuth refresh ─────────────────────────────────────────────────────────
+
+OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+
+
+def refresh_oauth_token(account_id: str) -> dict:
+    """
+    Refresh an expired OAuth token using the stored refresh token.
+    The refresh token is single-use: a new one is returned each time.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    conn.close()
+
+    if not row:
+        raise ValueError(f"Account {account_id} not found")
+    if row["auth_type"] != "oauth":
+        raise ValueError(f"Account {account_id} is not OAuth")
+
+    refresh_token = _decrypt(row["refresh_token_enc"])
+    if not refresh_token:
+        raise ValueError(
+            f"No refresh token for '{row['name']}'. "
+            f"Run: claude-accounts login {row['name']}"
+        )
+
+    try:
+        resp = requests.post(OAUTH_TOKEN_URL, json={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": OAUTH_CLIENT_ID,
+        }, timeout=15)
+    except requests.RequestException as e:
+        raise ConnectionError(f"OAuth refresh request failed: {e}")
+
+    if resp.status_code != 200:
+        detail = resp.text[:200] if resp.text else f"HTTP {resp.status_code}"
+        raise ValueError(
+            f"OAuth refresh failed ({resp.status_code}): {detail}. "
+            f"Re-authenticate: claude-accounts login {row['name']}"
+        )
+
+    data = resp.json()
+    new_access = data.get("access_token", "")
+    new_refresh = data.get("refresh_token", "")
+    expires_in = data.get("expires_in", 0)
+
+    if not new_access:
+        raise ValueError("OAuth refresh response missing access_token")
+
+    expires_at = int(time.time() * 1000) + (expires_in * 1000) if expires_in else 0
+
+    update_account(
+        account_id,
+        access_token=new_access,
+        refresh_token=new_refresh,
+        expires_at=expires_at,
+    )
+
+    _sync_credentials_file(account_id)
+
+    remaining_min = int(expires_in / 60) if expires_in else None
+    return {
+        "refreshed": True,
+        "token_preview": f"sk-ant-oat01-...{new_access[-6:]}",
+        "expires_in_min": remaining_min,
+    }
+
+
+def _sync_credentials_file(account_id: str):
+    """
+    Sync refreshed tokens back to ~/.claude/.credentials.json
+    so Claude Code can use them directly.
+    Writes atomically via temp file + rename.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    conn.close()
+    if not row or row["auth_type"] != "oauth":
+        return
+
+    access_token = _decrypt(row["access_token_enc"])
+    refresh_token = _decrypt(row["refresh_token_enc"])
+    expires_at = row["expires_at"]
+
+    cred_path = CREDENTIALS_PATH
+    data = {}
+    if cred_path.exists():
+        try:
+            with open(cred_path) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            data = {}
+
+    data["claudeAiOauth"] = {
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "expiresAt": expires_at,
+    }
+
+    cred_dir = cred_path.parent
+    cred_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(cred_dir), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, str(cred_path))
+        os.chmod(str(cred_path), 0o600)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
 
 # ── Export / Import ───────────────────────────────────────────────────────────

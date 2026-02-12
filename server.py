@@ -7,12 +7,24 @@ Single shared .claude dir.
 import os
 import uuid
 import shlex
+import pty
+import select
+import signal
+import struct
+import fcntl
+import termios
+import threading
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory, Response
+from flask_socketio import SocketIO, emit
 
 import db
 
 app = Flask(__name__, static_folder="static")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+# Active terminal sessions: {sid: {fd, pid}}
+_terminals = {}
 
 
 @app.route("/api/accounts", methods=["GET"])
@@ -92,6 +104,23 @@ def api_capture_oauth(aid):
         return jsonify(result)
     except (FileNotFoundError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/accounts/<aid>/refresh-oauth", methods=["POST"])
+def api_refresh_oauth(aid):
+    """
+    Refresh OAuth token using stored refresh token.
+    Calls OAuth endpoint, updates SQLite + ~/.claude/.credentials.json.
+    """
+    try:
+        result = db.refresh_oauth_token(aid)
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except ConnectionError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": f"Refresh failed: {e}"}), 500
 
 
 @app.route("/api/accounts/<aid>/launch", methods=["POST"])
@@ -209,6 +238,115 @@ def api_import():
     return jsonify({"imported": count})
 
 
+# ── Terminal WebSocket ────────────────────────────────────────────────────
+
+def _cleanup_terminal(sid):
+    term = _terminals.pop(sid, None)
+    if not term:
+        return
+    try:
+        os.close(term["fd"])
+    except OSError:
+        pass
+    try:
+        os.kill(term["pid"], signal.SIGTERM)
+    except OSError:
+        pass
+    try:
+        os.waitpid(term["pid"], os.WNOHANG)
+    except (OSError, ChildProcessError):
+        pass
+
+
+@socketio.on("start_terminal")
+def handle_start_terminal(data):
+    from flask import request as freq
+    sid = freq.sid
+    _cleanup_terminal(sid)
+
+    account_id = data.get("account_id", "")
+    try:
+        env_vars = db.get_launch_env(account_id)
+    except ValueError as e:
+        emit("terminal_error", {"error": str(e)})
+        return
+
+    env = os.environ.copy()
+    env.update(env_vars)
+    if "ANTHROPIC_API_KEY" in env_vars:
+        env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    if "CLAUDE_CODE_OAUTH_TOKEN" in env_vars:
+        env.pop("ANTHROPIC_API_KEY", None)
+    env.setdefault("TERM", "xterm-256color")
+
+    pid, fd = pty.fork()
+    if pid == 0:
+        # Child — exec claude
+        os.execvpe("claude", ["claude"], env)
+    else:
+        # Parent — track and relay
+        _terminals[sid] = {"fd": fd, "pid": pid}
+        emit("terminal_started")
+
+        def _read_loop():
+            while sid in _terminals:
+                try:
+                    r, _, _ = select.select([fd], [], [], 0.1)
+                    if r:
+                        chunk = os.read(fd, 4096)
+                        if chunk:
+                            socketio.emit(
+                                "terminal_output",
+                                {"data": chunk.decode("utf-8", errors="replace")},
+                                room=sid,
+                            )
+                        else:
+                            break
+                except (OSError, IOError):
+                    break
+            socketio.emit("terminal_exit", room=sid)
+
+        t = threading.Thread(target=_read_loop, daemon=True)
+        t.start()
+
+
+@socketio.on("terminal_input")
+def handle_terminal_input(data):
+    from flask import request as freq
+    term = _terminals.get(freq.sid)
+    if term:
+        try:
+            os.write(term["fd"], data["data"].encode("utf-8"))
+        except (OSError, IOError):
+            pass
+
+
+@socketio.on("resize_terminal")
+def handle_resize(data):
+    from flask import request as freq
+    term = _terminals.get(freq.sid)
+    if term:
+        try:
+            rows = int(data.get("rows", 24))
+            cols = int(data.get("cols", 80))
+            winsize = struct.pack("HHHH", rows, cols, 0, 0)
+            fcntl.ioctl(term["fd"], termios.TIOCSWINSZ, winsize)
+        except (OSError, IOError, ValueError):
+            pass
+
+
+@socketio.on("stop_terminal")
+def handle_stop():
+    from flask import request as freq
+    _cleanup_terminal(freq.sid)
+
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    from flask import request as freq
+    _cleanup_terminal(freq.sid)
+
+
 # ── Serve frontend ──
 
 @app.route("/")
@@ -228,4 +366,4 @@ if __name__ == "__main__":
     print(f"  → http://localhost:{port}")
     print(f"  → DB: {db.DB_PATH}")
     print(f"  → Single shared .claude dir — credentials injected via env vars\n")
-    app.run(host="127.0.0.1", port=port, debug=True)
+    socketio.run(app, host="127.0.0.1", port=port, debug=True, allow_unsafe_werkzeug=True)

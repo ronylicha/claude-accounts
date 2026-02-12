@@ -46,6 +46,8 @@ Before:                              After:
 - **Encrypted storage** -- Fernet AES-128 encryption, `chmod 600` on database and key files
 - **API Key + OAuth** -- Supports both `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`
 - **OAuth capture** -- Run `claude auth login`, then capture tokens from `.credentials.json`
+- **OAuth refresh** -- One-click token refresh from the dashboard, CLI, or auto-refresh on launch
+- **Web terminal** -- Launch Claude directly from the browser with xterm.js + WebSocket
 - **Shell aliases** -- Auto-generated `claude-perso`, `claude-boulot` aliases
 - **Web dashboard** -- Visual management with health monitoring
 - **CLI** -- Full-featured command-line interface
@@ -62,7 +64,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Requirements: Python 3.10+, `flask`, `cryptography`.
+Requirements: Python 3.10+, `flask`, `cryptography`, `requests`, `flask-socketio`, `simple-websocket`.
 
 > **Note:** The virtual environment must be activated (`source venv/bin/activate`) each time you open a new terminal before running any `python` command.
 
@@ -99,14 +101,15 @@ That's it. Same `~/.claude`, same config, different credentials.
 | `add <name> --key <key>` | Add an API key account |
 | `add <name> --oauth` | Add an OAuth account (tokens captured later) |
 | `login <name>` | Run OAuth login + capture tokens automatically |
-| `launch <name>` | Launch Claude with the account's credentials |
+| `refresh <name>` | Refresh an expired OAuth token using the refresh token |
+| `launch <name>` | Launch Claude with the account's credentials (auto-refreshes if expired) |
 | `list` | List all accounts with status |
 | `status <name>` | Check token expiry for an account |
 | `aliases` | Print generated shell aliases |
 | `install` | Install aliases into `.bashrc` / `.zshrc` |
 | `export` | Export all accounts as JSON |
 | `import <file>` | Import accounts from JSON file |
-| `serve` | Start the web dashboard |
+| `serve` | Start the web dashboard (with WebSocket terminal support) |
 
 ### OAuth Accounts
 
@@ -127,6 +130,28 @@ claude-accounts login client
 claude-accounts launch client
 # Injects CLAUDE_CODE_OAUTH_TOKEN and runs claude
 ```
+
+### OAuth Token Refresh
+
+OAuth tokens expire after a few hours. Claude Accounts Manager handles this automatically:
+
+```bash
+# Manual refresh from CLI
+claude-accounts refresh client
+# ✓ Token rafraîchi : sk-ant-oat01-...abc123
+# ⏰ Expire dans : 3h59m
+
+# Auto-refresh on launch (transparent)
+claude-accounts launch client
+# Token expired → auto-refreshes → launches claude
+```
+
+From the **web dashboard**:
+- Click the **refresh icon** on any OAuth account to refresh its token
+- Use **"Rafraîchir tous"** to batch-refresh all OAuth accounts
+- Expired tokens are **auto-refreshed on page load**
+
+The refresh token is single-use: each refresh returns a new one. Both `~/.claude-accounts/accounts.db` and `~/.claude/.credentials.json` are updated atomically.
 
 ### Shell Aliases
 
@@ -162,9 +187,11 @@ Open http://localhost:5111
 The dashboard provides:
 
 - **Health monitoring** -- See which accounts are active, expired, or need login
-- **One-click actions** -- Copy launch commands, capture OAuth tokens
+- **One-click actions** -- Copy launch commands, capture OAuth tokens, refresh tokens
+- **Web terminal** -- Launch Claude directly in the browser (xterm.js + WebSocket)
+- **Auto-refresh** -- Expired OAuth tokens are refreshed automatically on load
 - **Search & filter** -- Find accounts quickly
-- **Keyboard shortcuts** -- `N` to add, `/` to search, `Esc` to close
+- **Keyboard shortcuts** -- `N` to add, `/` to search, `Ctrl+Esc` to close terminal
 
 ## How It Works
 
@@ -186,7 +213,7 @@ The dashboard provides:
   accounts.db            .key file             CLAUDE_CODE_OAUTH_TOKEN=yyy claude
 ```
 
-### OAuth Token Capture
+### OAuth Token Lifecycle
 
 When you run `claude-accounts login <name>`:
 
@@ -194,7 +221,13 @@ When you run `claude-accounts login <name>`:
 2. Encrypts the tokens and stores them in SQLite
 3. On next `launch`, the access token is decrypted and injected as `CLAUDE_CODE_OAUTH_TOKEN`
 
-> **Note:** You must run `claude` at least once to authenticate before capturing tokens. Auth happens automatically on first launch.
+When a token expires:
+
+1. **Auto-refresh on launch** -- `get_launch_env()` detects expiry and calls `refresh_oauth_token()` automatically
+2. **Manual refresh** -- `claude-accounts refresh <name>` or the dashboard refresh button
+3. **Sync** -- `~/.claude/.credentials.json` is updated atomically after each refresh
+
+> **Note:** You must run `claude` at least once to authenticate before capturing tokens. Auth happens automatically on first launch. Subsequent refreshes are handled automatically.
 
 ## Security
 
@@ -219,22 +252,36 @@ Credentials are never stored in plaintext on disk except in Claude's own `.crede
 | `DELETE` | `/api/accounts/:id` | Delete an account |
 | `GET` | `/api/accounts/:id/status` | Token status (valid, expired, needs login) |
 | `POST` | `/api/accounts/:id/capture-oauth` | Capture tokens from `.credentials.json` |
+| `POST` | `/api/accounts/:id/refresh-oauth` | Refresh OAuth token using refresh token |
 | `POST` | `/api/accounts/:id/launch` | Get launch command with env vars |
 | `GET` | `/api/generate-aliases` | Generated aliases script |
 | `POST` | `/api/install-aliases` | Install aliases into shell |
 | `GET` | `/api/export` | Export all accounts (decrypted) |
 | `POST` | `/api/import` | Import accounts from JSON array |
 
+### WebSocket Events (Terminal)
+
+| Event | Direction | Description |
+|-------|-----------|-------------|
+| `start_terminal` | Client → Server | Start a terminal session with `{account_id}` |
+| `terminal_started` | Server → Client | Terminal pty spawned successfully |
+| `terminal_input` | Client → Server | Send keyboard input `{data}` |
+| `terminal_output` | Server → Client | Terminal output `{data}` |
+| `resize_terminal` | Client → Server | Resize pty `{rows, cols}` |
+| `terminal_exit` | Server → Client | Process exited |
+| `terminal_error` | Server → Client | Error message `{error}` |
+| `stop_terminal` | Client → Server | Kill the terminal process |
+
 ## Project Structure
 
 ```
 claude-accounts/
-  cli.py          CLI interface
-  server.py       Flask API + serves dashboard
-  db.py           Database layer (SQLite + encryption)
-  index.html      Web dashboard (single-file SPA)
-  requirements.txt
-  assets/         README illustrations
+  cli.py              CLI interface (add, login, refresh, launch, serve, ...)
+  server.py           Flask API + WebSocket terminal (flask-socketio + pty)
+  db.py               Database layer (SQLite + Fernet encryption + OAuth refresh)
+  static/index.html   Web dashboard SPA (xterm.js terminal, token management)
+  requirements.txt    flask, cryptography, requests, flask-socketio, simple-websocket
+  assets/             README illustrations
 ```
 
 ## Contributing

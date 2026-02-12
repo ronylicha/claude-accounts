@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Claude Accounts Manager</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.4/dist/socket.io.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 
@@ -214,6 +218,33 @@
   .ib:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
   .ib.del:hover { border-color:var(--red); color:var(--red); background:var(--red-s); }
   .ib.cap:hover { border-color:var(--grn); color:var(--grn); background:var(--grn-s); }
+  .ib.ref:hover { border-color:var(--blu); color:var(--blu); background:var(--blu-s); }
+  .ib.ref.spinning svg { animation:spin 0.8s linear infinite; }
+  @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+
+  /* ── Terminal Overlay ── */
+  .term-overlay {
+    position:fixed; inset:0; z-index:3000; background:var(--bg);
+    display:none; flex-direction:column;
+  }
+  .term-overlay.on { display:flex; }
+  .term-bar {
+    display:flex; align-items:center; gap:8px; padding:8px 14px;
+    background:var(--bg1); border-bottom:1px solid var(--brd); flex-shrink:0;
+  }
+  .term-bar .term-dots { display:flex; gap:4px; }
+  .term-bar .term-title {
+    font-family:var(--mono); font-size:12px; color:var(--td); font-weight:500;
+  }
+  .term-bar .term-spacer { flex:1; }
+  .term-bar .term-close {
+    width:28px; height:28px; border-radius:var(--r-sm); border:1px solid var(--brd);
+    background:transparent; color:var(--td); cursor:pointer; display:flex;
+    align-items:center; justify-content:center; transition:all 0.15s; outline:none;
+  }
+  .term-bar .term-close:hover { border-color:var(--red); color:var(--red); }
+  .term-bar .term-close svg { width:14px; height:14px; }
+  #term-container { flex:1; overflow:hidden; padding:4px; }
   .ib svg { width:13px; height:13px; }
 
   /* ── Empty / Onboarding ── */
@@ -424,11 +455,25 @@
 <div class="app" id="app"></div>
 <div class="toasts" id="toasts"></div>
 
+<!-- Terminal Overlay (persistent, outside #app to survive re-renders) -->
+<div class="term-overlay" id="term-overlay">
+  <div class="term-bar">
+    <span class="term-dots"><span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span></span>
+    <span class="term-title" id="term-title">Terminal</span>
+    <span class="term-spacer"></span>
+    <button class="term-close" onclick="closeTerminal()" aria-label="Fermer le terminal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div id="term-container"></div>
+</div>
+
 <script>
 const API = '/api';
 const COLORS = ['#c97b5a','#22c55e','#3b82f6','#a855f7','#eab308','#6366f1','#06b6d4','#ef4444'];
 let accounts = [], modal = null, editId = null, deleteId = null, authType = 'api_key';
 let aliasScript = '', searchQuery = '', terminalOpen = false;
+let _socket = null, _term = null, _fitAddon = null;
 
 // ── Icons (SVG) ──
 const icons = {
@@ -459,6 +504,7 @@ const icons = {
   code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+  refreshCw: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
 };
 
 // ── API ──
@@ -480,7 +526,22 @@ function toast(m, t = 'ok') {
   setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.2s'; setTimeout(() => el.remove(), 200); }, 2800);
 }
 
-async function load() { accounts = await api('/accounts'); render(); }
+async function load() {
+  accounts = await api('/accounts');
+  render();
+  // Auto-refresh expired tokens that have a refresh token
+  const expired = accounts.filter(a => a.auth_type === 'oauth' && a.token_status === 'expired' && a.has_refresh);
+  if (expired.length > 0) {
+    for (const a of expired) {
+      try {
+        const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
+        if (!r.error) toast(`Auto-refresh : ${a.name}`);
+      } catch {}
+    }
+    accounts = await api('/accounts');
+    render();
+  }
+}
 async function loadAliases() { const r = await fetch(API + '/generate-aliases'); aliasScript = await r.text(); }
 
 // ── Actions ──
@@ -529,6 +590,107 @@ async function installAliases() {
   const r = await api('/install-aliases', { method: 'POST' });
   if (r.error) return toast(r.error, 'err');
   toast(`${r.count} alias installes`);
+}
+
+async function refreshOAuth(id) {
+  const btn = document.querySelector(`[data-ref="${id}"]`);
+  if (btn) btn.classList.add('spinning');
+  try {
+    const r = await api(`/accounts/${id}/refresh-oauth`, { method: 'POST' });
+    if (r.error) { toast(r.error, 'err'); return; }
+    toast(`Token rafraîchi : ${r.token_preview}`);
+    await load(); await loadAliases();
+  } catch (e) { toast('Erreur refresh: ' + e.message, 'err'); }
+  finally { if (btn) btn.classList.remove('spinning'); }
+}
+
+async function refreshAllOAuth() {
+  const oauthAccs = accounts.filter(a => a.auth_type === 'oauth' && a.has_refresh);
+  if (!oauthAccs.length) return toast('Aucun compte OAuth avec refresh token', 'info');
+  let ok = 0, fail = 0;
+  for (const a of oauthAccs) {
+    try {
+      const r = await api(`/accounts/${a.id}/refresh-oauth`, { method: 'POST' });
+      if (r.error) fail++; else ok++;
+    } catch { fail++; }
+  }
+  if (ok) toast(`${ok} token(s) rafraîchi(s)`);
+  if (fail) toast(`${fail} échec(s)`, 'err');
+  await load(); await loadAliases();
+}
+
+function launchTerminal(id, name) {
+  const overlay = document.getElementById('term-overlay');
+  overlay.classList.add('on');
+  document.getElementById('term-title').textContent = 'claude-' + name;
+
+  // Cleanup previous
+  if (_term) { _term.dispose(); _term = null; }
+  if (_socket) { _socket.disconnect(); _socket = null; }
+
+  // Create xterm instance with app-matching theme
+  _term = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    theme: {
+      background: '#08090d', foreground: '#b0b3c4', cursor: '#c97b5a',
+      selectionBackground: 'rgba(201,123,90,0.3)',
+      black: '#1c1e30', red: '#ef4444', green: '#22c55e', yellow: '#eab308',
+      blue: '#3b82f6', magenta: '#a855f7', cyan: '#06b6d4', white: '#e8eaf0',
+      brightBlack: '#5c5e72', brightRed: '#f87171', brightGreen: '#4ade80',
+      brightYellow: '#facc15', brightBlue: '#60a5fa', brightMagenta: '#c084fc',
+      brightCyan: '#22d3ee', brightWhite: '#f1f3f9',
+    }
+  });
+  _fitAddon = new FitAddon.FitAddon();
+  _term.loadAddon(_fitAddon);
+
+  const container = document.getElementById('term-container');
+  container.innerHTML = '';
+  _term.open(container);
+  _fitAddon.fit();
+
+  // Connect WebSocket
+  _socket = io();
+
+  _socket.on('connect', () => {
+    _socket.emit('start_terminal', { account_id: id });
+  });
+
+  _socket.on('terminal_started', () => {
+    _fitAddon.fit();
+    _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
+  });
+
+  _socket.on('terminal_output', (d) => { _term.write(d.data); });
+  _socket.on('terminal_exit', () => { _term.write('\r\n\x1b[33m[Processus termine]\x1b[0m\r\n'); });
+  _socket.on('terminal_error', (d) => { _term.write('\r\n\x1b[31mErreur: ' + d.error + '\x1b[0m\r\n'); });
+
+  // Send input to server
+  _term.onData((data) => {
+    if (_socket && _socket.connected) _socket.emit('terminal_input', { data });
+  });
+
+  // Handle resize
+  const ro = new ResizeObserver(() => {
+    if (_fitAddon) _fitAddon.fit();
+    if (_socket && _socket.connected && _term) {
+      _socket.emit('resize_terminal', { rows: _term.rows, cols: _term.cols });
+    }
+  });
+  ro.observe(container);
+  _term._resizeObserver = ro;
+}
+
+function closeTerminal() {
+  document.getElementById('term-overlay').classList.remove('on');
+  if (_socket) { _socket.emit('stop_terminal'); _socket.disconnect(); _socket = null; }
+  if (_term) {
+    if (_term._resizeObserver) _term._resizeObserver.disconnect();
+    _term.dispose(); _term = null;
+  }
+  _fitAddon = null;
 }
 
 async function copyCmd(id) {
@@ -660,6 +822,7 @@ function render() {
     <div class="toolbar">
       <button class="btn btn-primary" onclick="openAdd()" aria-label="Ajouter un compte">${icons.plus} Ajouter</button>
       <button class="btn" onclick="installAliases()" aria-label="Installer les aliases">${icons.zap} Installer aliases</button>
+      <button class="btn" onclick="refreshAllOAuth()" aria-label="Rafraîchir tous les tokens OAuth">${icons.refreshCw} Rafraîchir tous</button>
       <button class="btn btn-sm" onclick="dlScript()" aria-label="Telecharger le script">${icons.download} .sh</button>
       <div class="spacer"></div>
       <div class="search-box">
@@ -730,8 +893,10 @@ function render() {
           </div>
         </div>
         <div class="row-actions">
-          <button class="btn btn-sm btn-copy" onclick="copyCmd('${a.id}')" title="Copier la commande" aria-label="Copier la commande de lancement">${icons.terminal} Copier</button>
+          <button class="btn btn-sm btn-green" onclick="launchTerminal('${a.id}','${a.name}')" title="Lancer dans le terminal" aria-label="Lancer Claude">${icons.terminal} Lancer</button>
+          <button class="btn btn-sm btn-copy" onclick="copyCmd('${a.id}')" title="Copier la commande" aria-label="Copier la commande de lancement">${icons.copy} Copier</button>
           <div class="ib-group">
+            ${a.auth_type === 'oauth' && a.has_refresh ? `<button class="ib ref" data-ref="${a.id}" onclick="refreshOAuth('${a.id}')" title="Rafraîchir le token OAuth" aria-label="Rafraîchir le token OAuth">${icons.refreshCw}</button>` : ''}
             ${a.auth_type === 'oauth' ? `<button class="ib cap" onclick="captureOAuth('${a.id}')" title="Capturer tokens OAuth" aria-label="Capturer tokens OAuth">${icons.download}</button>` : ''}
             <button class="ib" onclick="openEdit('${a.id}')" title="Modifier" aria-label="Modifier le compte">${icons.edit}</button>
             <button class="ib del" onclick="openDel('${a.id}')" title="Supprimer" aria-label="Supprimer le compte">${icons.trash}</button>
@@ -887,6 +1052,11 @@ function closeOverlay(e) { if (e.target.classList.contains('overlay')) closeModa
 
 // ── Keyboard Shortcuts ──
 document.addEventListener('keydown', e => {
+  // Terminal overlay captures all keys except Ctrl+Shift+T to close
+  if (document.getElementById('term-overlay').classList.contains('on')) {
+    if (e.key === 'Escape' && e.ctrlKey) closeTerminal();
+    return;
+  }
   if (modal) {
     if (e.key === 'Escape') closeModal();
     return;
