@@ -312,6 +312,166 @@ docker compose down
 
 Data is persisted in `~/.claude-accounts` and `~/.claude` via Docker volumes.
 
+## Exposing Externally
+
+By default, the server listens on `127.0.0.1` (localhost only). To access it from another machine, you need to **bind to `0.0.0.0`** and ideally protect the connection with HTTPS.
+
+> [!CAUTION]
+> Never expose plain HTTP to the internet. Credentials transit over the wire — always use HTTPS or an SSH tunnel.
+
+### 1. Quick: `--remote` Flag
+
+Bind the server to all network interfaces:
+
+```bash
+# Without Docker
+python cli.py serve --remote --port 5111
+
+# With Docker (already the default in the Dockerfile)
+docker compose up -d
+```
+
+The server is now reachable at `http://<your-server-ip>:5111` from your local network.
+
+### 2. SSH Tunnel (Simplest Secure Method)
+
+No server-side configuration needed. From your **local machine**, forward the port through SSH:
+
+```bash
+ssh -L 5111:localhost:5111 user@your-server
+```
+
+Then open `http://localhost:5111` locally. Traffic is encrypted through the SSH connection.
+
+> [!TIP]
+> Add `-N` (no shell) and `-f` (background) for a persistent tunnel:
+> ```bash
+> ssh -NfL 5111:localhost:5111 user@your-server
+> ```
+
+### 3. Reverse Proxy with HTTPS (Recommended for Production)
+
+Use a reverse proxy to add TLS termination in front of the service.
+
+#### Nginx + Let's Encrypt
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name claude.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/claude.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/claude.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:5111;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support (required for the web terminal)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+server {
+    listen 80;
+    server_name claude.example.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+```bash
+# Get a certificate with certbot
+sudo certbot --nginx -d claude.example.com
+```
+
+#### Caddy (Auto-HTTPS)
+
+```
+claude.example.com {
+    reverse_proxy localhost:5111
+}
+```
+
+Caddy handles TLS certificates automatically — no extra configuration needed.
+
+### 4. Cloudflare Tunnel (No Open Ports)
+
+Expose the service without opening any firewall ports:
+
+```bash
+# Install cloudflared
+# https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+# Authenticate
+cloudflared tunnel login
+
+# Create a tunnel
+cloudflared tunnel create claude-accounts
+
+# Run the tunnel
+cloudflared tunnel --url http://localhost:5111 run claude-accounts
+```
+
+Your service is accessible at `https://<tunnel-id>.cfargotunnel.com` (or a custom domain via Cloudflare DNS).
+
+### 5. Docker Compose for Remote Access
+
+To override the default port binding and expose on all interfaces:
+
+```yaml
+# docker-compose.override.yml
+services:
+  claude-accounts:
+    ports:
+      - "0.0.0.0:5111:5111"
+```
+
+To combine with a Caddy reverse proxy in Docker:
+
+```yaml
+# docker-compose.override.yml
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - claude-accounts
+
+  claude-accounts:
+    ports: []  # remove direct exposure
+
+volumes:
+  caddy_data:
+```
+
+With a `Caddyfile`:
+```
+claude.example.com {
+    reverse_proxy claude-accounts:5111
+}
+```
+
+### Security Checklist
+
+| Item | Details |
+|------|---------|
+| **HTTPS** | Always use TLS in production (reverse proxy, Cloudflare, or SSH tunnel) |
+| **Password** | Set a strong dashboard password on first visit |
+| **Firewall** | Only open ports 80/443 (or none with Cloudflare Tunnel) |
+| **API token** | Use `X-Auth-Token` for programmatic access, never share it |
+| **Rate limiting** | Login is limited to 10 attempts per 15 min per IP (built-in) |
+| **Updates** | Keep the server behind a VPN or firewall if hosting sensitive credentials |
+
 ## Project Structure
 
 ```
