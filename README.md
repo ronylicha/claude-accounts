@@ -481,7 +481,7 @@ claude-accounts/
   db.py               Database layer (SQLite + Fernet encryption + OAuth refresh)
   static/index.html   Web dashboard SPA (xterm.js terminal, token management)
   requirements.txt    flask, cryptography, requests, flask-socketio, simple-websocket
-  Dockerfile          Docker image (python:3.12-slim + tini)
+  Dockerfile          Docker image (python:3.14-slim + tini)
   docker-compose.yml  Docker orchestration with volumes
   start.sh            Quick start script (build + run + open browser)
   .dockerignore       Docker build exclusions
